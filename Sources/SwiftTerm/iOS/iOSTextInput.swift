@@ -407,7 +407,7 @@ extension TerminalView: UITextInput {
             }
             send (data)
         }
-        if terminal.buffer.isAlternateBuffer {
+        if terminal.isCurrentBufferAlternate {
             let deltay = lastPosition.y - point.y
 
             var data: [UInt8]
