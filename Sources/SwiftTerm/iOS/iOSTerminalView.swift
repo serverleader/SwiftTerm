@@ -1123,10 +1123,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             return
         }
 
-        print("🎯🎯🎯 [SwiftTerm] ensureCaretIsVisible() called")
+        print("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() START ==========")
         print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
         print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
         print("🎯🎯🎯 [SwiftTerm] contentInset: \(contentInset)")
+        print("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: \(contentOffset)")
 
         // Get the current cursor position in the entire buffer (including scrollback)
         // buffer.y is the cursor row in the visible area (0 to rows-1)
@@ -1144,10 +1145,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         print("🎯   - buffer.y=\(terminal.buffer.y), yDisp=\(terminal.buffer.yDisp), absolute cursorRow=\(cursorRow)")
         print("🎯   - Cursor Y position: \(cursorY)")
+        print("🎯   - Cursor bottom: \(cursorBottom)")
         print("🎯   - Visible area: height=\(visibleHeight), bottom=\(visibleBottom)")
         print("🎯   - Content inset bottom (keyboard): \(contentInset.bottom)")
         print("🎯   - Current offset: \(currentOffset)")
-        print("🎯   - Cursor bottom: \(cursorBottom)")
+
+        // Calculate how many rows of padding we currently have
+        let currentPaddingRows = (visibleBottom - cursorBottom) / cellDimension.height
+        print("🎯   - Current padding: \(currentPaddingRows) rows")
 
         if cursorBottom > visibleBottom {
             // Cursor is below visible area, scroll down
@@ -1165,7 +1170,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             print("🎯   - ✅ Cursor is already visible")
         }
 
-        print("🎯   - Final content offset: \(contentOffset)")
+        print("🎯   - AFTER contentOffset: \(contentOffset)")
+        print("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() END ==========")
     }
     
     public func deleteBackward() {
