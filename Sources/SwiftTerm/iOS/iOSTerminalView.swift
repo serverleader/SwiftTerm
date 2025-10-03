@@ -1124,12 +1124,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         }
 
         NSLog("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() START ==========")
-        NSLog("🎯🎯🎯 [SwiftTerm] cellDimension: %@", NSStringFromCGSize(cellDimension))
-        NSLog("🎯🎯🎯 [SwiftTerm] bounds: %@", NSStringFromCGRect(bounds))
-        NSLog("🎯🎯🎯 [SwiftTerm] contentInset: %@", NSStringFromUIEdgeInsets(contentInset))
-        NSLog("🎯🎯🎯 [SwiftTerm] safeAreaInsets: %@", NSStringFromUIEdgeInsets(safeAreaInsets))
-        NSLog("🎯🎯🎯 [SwiftTerm] adjustedContentInset: %@", NSStringFromUIEdgeInsets(adjustedContentInset))
-        NSLog("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: %@", NSStringFromCGPoint(contentOffset))
+        NSLog("🎯🎯🎯 [SwiftTerm] cellDimension: %.1fx%.1f", cellDimension.width, cellDimension.height)
+        NSLog("🎯🎯🎯 [SwiftTerm] bounds: %.1fx%.1f", bounds.width, bounds.height)
+        NSLog("🎯🎯🎯 [SwiftTerm] contentInset: top=%.1f, left=%.1f, bottom=%.1f, right=%.1f", contentInset.top, contentInset.left, contentInset.bottom, contentInset.right)
+        NSLog("🎯🎯🎯 [SwiftTerm] safeAreaInsets: top=%.1f, left=%.1f, bottom=%.1f, right=%.1f", safeAreaInsets.top, safeAreaInsets.left, safeAreaInsets.bottom, safeAreaInsets.right)
+        NSLog("🎯🎯🎯 [SwiftTerm] adjustedContentInset: top=%.1f, left=%.1f, bottom=%.1f, right=%.1f", adjustedContentInset.top, adjustedContentInset.left, adjustedContentInset.bottom, adjustedContentInset.right)
+        NSLog("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: %.1f, %.1f", contentOffset.x, contentOffset.y)
 
         // Get the current cursor position in the entire buffer (including scrollback)
         // buffer.y is the cursor row in the visible area (0 to rows-1)
@@ -1172,7 +1172,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             NSLog("🎯   - ✅ Cursor is already visible")
         }
 
-        NSLog("🎯   - AFTER contentOffset: %@", NSStringFromCGPoint(contentOffset))
+        NSLog("🎯   - AFTER contentOffset: %.1f, %.1f", contentOffset.x, contentOffset.y)
         NSLog("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() END ==========")
     }
     
