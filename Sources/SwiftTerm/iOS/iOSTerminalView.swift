@@ -1115,7 +1115,45 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     func ensureCaretIsVisible ()
     {
-        contentOffset = CGPoint (x: 0, y: CGFloat (terminal.buffer.lines.count-terminal.rows)*cellDimension.height)
+        print("🎯🎯🎯 [SwiftTerm] ensureCaretIsVisible() called")
+        print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
+        print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
+        print("🎯🎯🎯 [SwiftTerm] contentInset: \(contentInset)")
+
+        // Get the current cursor position
+        let cursorRow = terminal.buffer.y
+        let cursorY = CGFloat(cursorRow) * cellDimension.height
+
+        // Get the visible area (accounting for keyboard if present)
+        let visibleHeight = bounds.height - contentInset.bottom
+        let currentOffset = contentOffset.y
+        let visibleBottom = currentOffset + visibleHeight
+
+        // Check if cursor is visible
+        let cursorBottom = cursorY + cellDimension.height
+
+        print("🎯   - Cursor position: row=\(cursorRow), y=\(cursorY)")
+        print("🎯   - Visible area: height=\(visibleHeight), bottom=\(visibleBottom)")
+        print("🎯   - Content inset bottom (keyboard): \(contentInset.bottom)")
+        print("🎯   - Current offset: \(currentOffset)")
+        print("🎯   - Cursor bottom: \(cursorBottom)")
+
+        if cursorBottom > visibleBottom {
+            // Cursor is below visible area, scroll down
+            let newOffset = cursorBottom - visibleHeight + (cellDimension.height * 2) // Add padding
+            let finalOffset = max(0, newOffset)
+            print("🎯   - 🚨 CURSOR HIDDEN BELOW! Scrolling down: \(currentOffset) → \(finalOffset)")
+            contentOffset = CGPoint(x: 0, y: finalOffset)
+        } else if cursorY < currentOffset {
+            // Cursor is above visible area, scroll up
+            let finalOffset = max(0, cursorY - cellDimension.height)
+            print("🎯   - 🚨 CURSOR HIDDEN ABOVE! Scrolling up: \(currentOffset) → \(finalOffset)")
+            contentOffset = CGPoint(x: 0, y: finalOffset)
+        } else {
+            print("🎯   - ✅ Cursor is already visible")
+        }
+
+        print("🎯   - Final content offset: \(contentOffset)")
     }
     
     public func deleteBackward() {
