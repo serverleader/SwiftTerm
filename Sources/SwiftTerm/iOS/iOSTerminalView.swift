@@ -1113,7 +1113,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         queuePendingDisplay()
     }
 
-    func ensureCaretIsVisible ()
+    public func ensureCaretIsVisible ()
     {
         print("🎯🎯🎯 [SwiftTerm] ensureCaretIsVisible() called")
         print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
