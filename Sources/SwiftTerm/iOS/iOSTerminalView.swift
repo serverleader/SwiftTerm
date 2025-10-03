@@ -1127,6 +1127,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
         print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
         print("🎯🎯🎯 [SwiftTerm] contentInset: \(contentInset)")
+        print("🎯🎯🎯 [SwiftTerm] safeAreaInsets: \(safeAreaInsets)")
+        print("🎯🎯🎯 [SwiftTerm] adjustedContentInset: \(adjustedContentInset)")
         print("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: \(contentOffset)")
 
         // Get the current cursor position in the entire buffer (including scrollback)
