@@ -1117,6 +1117,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     @objc public func ensureCaretIsVisible ()
     {
+        // Guard against being called before view is initialized
+        guard bounds.height > 0, cellDimension.height > 0 else {
+            print("🎯 [SwiftTerm] ensureCaretIsVisible called before view initialized, skipping")
+            return
+        }
+
         print("🎯🎯🎯 [SwiftTerm] ensureCaretIsVisible() called")
         print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
         print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
