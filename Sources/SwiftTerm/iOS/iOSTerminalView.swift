@@ -1151,8 +1151,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         if cursorBottom > visibleBottom {
             // Cursor is below visible area, scroll down
-            // Add 1 row padding to ensure cursor is visible above keyboard
-            let newOffset = cursorBottom - visibleHeight + cellDimension.height
+            // Position cursor at bottom of visible area (no extra padding)
+            let newOffset = cursorBottom - visibleHeight
             let finalOffset = max(0, newOffset)
             print("🎯   - 🚨 CURSOR HIDDEN BELOW! Scrolling down: \(currentOffset) → \(finalOffset)")
             contentOffset = CGPoint(x: 0, y: finalOffset)
