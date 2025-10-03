@@ -1120,8 +1120,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
         print("🎯🎯🎯 [SwiftTerm] contentInset: \(contentInset)")
 
-        // Get the current cursor position
-        let cursorRow = terminal.buffer.y
+        // Get the current cursor position in the entire buffer (including scrollback)
+        // buffer.y is the cursor row in the visible area (0 to rows-1)
+        // buffer.yDisp is the scrollback offset
+        let cursorRow = terminal.buffer.y + terminal.buffer.yDisp
         let cursorY = CGFloat(cursorRow) * cellDimension.height
 
         // Get the visible area (accounting for keyboard if present)
@@ -1132,7 +1134,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // Check if cursor is visible
         let cursorBottom = cursorY + cellDimension.height
 
-        print("🎯   - Cursor position: row=\(cursorRow), y=\(cursorY)")
+        print("🎯   - buffer.y=\(terminal.buffer.y), yDisp=\(terminal.buffer.yDisp), absolute cursorRow=\(cursorRow)")
+        print("🎯   - Cursor Y position: \(cursorY)")
         print("🎯   - Visible area: height=\(visibleHeight), bottom=\(visibleBottom)")
         print("🎯   - Content inset bottom (keyboard): \(contentInset.bottom)")
         print("🎯   - Current offset: \(currentOffset)")
