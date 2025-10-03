@@ -1123,13 +1123,13 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             return
         }
 
-        print("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() START ==========")
-        print("🎯🎯🎯 [SwiftTerm] cellDimension: \(cellDimension)")
-        print("🎯🎯🎯 [SwiftTerm] bounds: \(bounds)")
-        print("🎯🎯🎯 [SwiftTerm] contentInset: \(contentInset)")
-        print("🎯🎯🎯 [SwiftTerm] safeAreaInsets: \(safeAreaInsets)")
-        print("🎯🎯🎯 [SwiftTerm] adjustedContentInset: \(adjustedContentInset)")
-        print("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: \(contentOffset)")
+        NSLog("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() START ==========")
+        NSLog("🎯🎯🎯 [SwiftTerm] cellDimension: %@", NSStringFromCGSize(cellDimension))
+        NSLog("🎯🎯🎯 [SwiftTerm] bounds: %@", NSStringFromCGRect(bounds))
+        NSLog("🎯🎯🎯 [SwiftTerm] contentInset: %@", NSStringFromUIEdgeInsets(contentInset))
+        NSLog("🎯🎯🎯 [SwiftTerm] safeAreaInsets: %@", NSStringFromUIEdgeInsets(safeAreaInsets))
+        NSLog("🎯🎯🎯 [SwiftTerm] adjustedContentInset: %@", NSStringFromUIEdgeInsets(adjustedContentInset))
+        NSLog("🎯🎯🎯 [SwiftTerm] BEFORE contentOffset: %@", NSStringFromCGPoint(contentOffset))
 
         // Get the current cursor position in the entire buffer (including scrollback)
         // buffer.y is the cursor row in the visible area (0 to rows-1)
@@ -1145,35 +1145,35 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // Check if cursor is visible
         let cursorBottom = cursorY + cellDimension.height
 
-        print("🎯   - buffer.y=\(terminal.buffer.y), yDisp=\(terminal.buffer.yDisp), absolute cursorRow=\(cursorRow)")
-        print("🎯   - Cursor Y position: \(cursorY)")
-        print("🎯   - Cursor bottom: \(cursorBottom)")
-        print("🎯   - Visible area: height=\(visibleHeight), bottom=\(visibleBottom)")
-        print("🎯   - Content inset bottom (keyboard): \(contentInset.bottom)")
-        print("🎯   - Current offset: \(currentOffset)")
+        NSLog("🎯   - buffer.y=%d, yDisp=%d, absolute cursorRow=%d", terminal.buffer.y, terminal.buffer.yDisp, cursorRow)
+        NSLog("🎯   - Cursor Y position: %.1f", cursorY)
+        NSLog("🎯   - Cursor bottom: %.1f", cursorBottom)
+        NSLog("🎯   - Visible area: height=%.1f, bottom=%.1f", visibleHeight, visibleBottom)
+        NSLog("🎯   - Content inset bottom (keyboard): %.1f", contentInset.bottom)
+        NSLog("🎯   - Current offset: %.1f", currentOffset)
 
         // Calculate how many rows of padding we currently have
         let currentPaddingRows = (visibleBottom - cursorBottom) / cellDimension.height
-        print("🎯   - Current padding: \(currentPaddingRows) rows")
+        NSLog("🎯   - Current padding: %.2f rows", currentPaddingRows)
 
         if cursorBottom > visibleBottom {
             // Cursor is below visible area, scroll down
             // Position cursor at bottom of visible area (no extra padding)
             let newOffset = cursorBottom - visibleHeight
             let finalOffset = max(0, newOffset)
-            print("🎯   - 🚨 CURSOR HIDDEN BELOW! Scrolling down: \(currentOffset) → \(finalOffset)")
+            NSLog("🎯   - 🚨 CURSOR HIDDEN BELOW! Scrolling down: %.1f → %.1f", currentOffset, finalOffset)
             contentOffset = CGPoint(x: 0, y: finalOffset)
         } else if cursorY < currentOffset {
             // Cursor is above visible area, scroll up
             let finalOffset = max(0, cursorY - cellDimension.height)
-            print("🎯   - 🚨 CURSOR HIDDEN ABOVE! Scrolling up: \(currentOffset) → \(finalOffset)")
+            NSLog("🎯   - 🚨 CURSOR HIDDEN ABOVE! Scrolling up: %.1f → %.1f", currentOffset, finalOffset)
             contentOffset = CGPoint(x: 0, y: finalOffset)
         } else {
-            print("🎯   - ✅ Cursor is already visible")
+            NSLog("🎯   - ✅ Cursor is already visible")
         }
 
-        print("🎯   - AFTER contentOffset: \(contentOffset)")
-        print("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() END ==========")
+        NSLog("🎯   - AFTER contentOffset: %@", NSStringFromCGPoint(contentOffset))
+        NSLog("🎯🎯🎯 [SwiftTerm] ========== ensureCaretIsVisible() END ==========")
     }
     
     public func deleteBackward() {
