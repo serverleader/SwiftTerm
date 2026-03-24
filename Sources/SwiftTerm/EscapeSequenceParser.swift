@@ -553,6 +553,8 @@ public class EscapeSequenceParser {
             return Terminal.DECRQSS(terminal: terminal)
         } else if collect.isEmpty && code == 0x71 {  // "q"
             return SixelDcsHandler(terminal: terminal)
+        } else if collect.isEmpty && code == 0x74 {  // "t" — tmux DCS passthrough (ESC P tmux; ... ST)
+            return Terminal.TmuxPassthroughDcsHandler(terminal: terminal)
         }
         return nil
     }

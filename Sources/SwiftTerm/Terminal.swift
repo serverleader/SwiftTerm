@@ -1015,6 +1015,108 @@ open class Terminal {
         }
     }
 
+    // MARK: - Tmux DCS Passthrough Handler
+    //
+    // Handles DCS tmux; <escaped-content> ST sequences.
+    // Tmux wraps escape sequences (like OSC 52 clipboard) in DCS passthrough
+    // when forwarding them from inner programs to the outer terminal.
+    // ESC characters in the content are doubled (ESC ESC → ESC).
+    class TmuxPassthroughDcsHandler: DcsHandler {
+        var data: [UInt8] = []
+        unowned var terminal: Terminal
+
+        init(terminal: Terminal) {
+            self.terminal = terminal
+        }
+
+        func hook(collect: cstring, parameters: [Int], flag: UInt8) {
+            data = []
+        }
+
+        func put(data: ArraySlice<UInt8>) {
+            for x in data {
+                self.data.append(x)
+            }
+        }
+
+        func unhook() {
+            let prefix: [UInt8] = Array("mux;".utf8)
+            guard data.count > prefix.count,
+                  Array(data[0..<prefix.count]) == prefix else {
+                return
+            }
+
+            let escaped = Array(data[prefix.count...])
+
+            // Un-double ESC characters (tmux doubles them for escaping)
+            var unescaped: [UInt8] = []
+            unescaped.reserveCapacity(escaped.count)
+            var i = 0
+            while i < escaped.count {
+                if escaped[i] == 0x1B && i + 1 < escaped.count && escaped[i + 1] == 0x1B {
+                    unescaped.append(0x1B)
+                    i += 2
+                } else {
+                    unescaped.append(escaped[i])
+                    i += 1
+                }
+            }
+
+            // Notify that tmux passthrough was detected
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Notification.Name("TmuxPassthroughDetected"), object: nil)
+            }
+
+            // Dispatch OSC sequences directly (avoid parser reentrancy)
+            dispatchUnwrappedSequence(unescaped)
+        }
+
+        private func dispatchUnwrappedSequence(_ bytes: [UInt8]) {
+            // Look for OSC: ESC ] (0x1B 0x5D)
+            guard bytes.count >= 4,
+                  bytes[0] == 0x1B,
+                  bytes[1] == 0x5D else {
+                // For non-OSC sequences, defer to next run loop to avoid reentrancy
+                let capturedTerminal = terminal
+                let capturedBytes = bytes
+                DispatchQueue.main.async {
+                    capturedTerminal.parse(buffer: ArraySlice(capturedBytes))
+                }
+                return
+            }
+
+            let oscData = bytes[2...]
+            let semiColon = UInt8(ascii: ";")
+            guard let semiIdx = oscData.firstIndex(of: semiColon) else { return }
+
+            var oscCode = 0
+            for idx in oscData.startIndex..<semiIdx {
+                let ch = oscData[idx]
+                if ch >= 0x30 && ch <= 0x39 {
+                    oscCode = oscCode * 10 + Int(ch) - 48
+                }
+            }
+
+            // Strip trailing BEL (0x07) or ST (ESC \ = 0x1B 0x5C)
+            var contentEnd = oscData.endIndex
+            if contentEnd > oscData.startIndex && oscData[contentEnd - 1] == 0x07 {
+                contentEnd = oscData.index(before: contentEnd)
+            } else if contentEnd >= oscData.startIndex + 2
+                        && oscData[contentEnd - 1] == 0x5C
+                        && oscData[contentEnd - 2] == 0x1B {
+                contentEnd = oscData.index(contentEnd, offsetBy: -2)
+            }
+
+            let contentStart = oscData.index(after: semiIdx)
+            guard contentStart < contentEnd else { return }
+            let content = ArraySlice(oscData[contentStart..<contentEnd])
+
+            if let handler = terminal.parser.oscHandlers[oscCode] {
+                handler(content)
+            }
+        }
+    }
+
     // Configures the EscapeSequenceParser with fallback handlers and print handling
     func configureParser (_ parser: EscapeSequenceParser)
     {
@@ -1731,18 +1833,29 @@ open class Terminal {
     //    ESC ] 52 ; c ; [base64 data] \a
     // where c is for copy and the only thing supported.
     func oscClipboard (_ data: ArraySlice<UInt8>) {
-        // we require data to start with c; followed by base64 content
-        guard data.count >= 2,
-              data[data.startIndex] == UInt8(ascii: "c"),
-              data[data.startIndex+1] == UInt8(ascii: ";") else {
+        // OSC 52 format: selection;base64data
+        // selection can be: c (clipboard), p (primary), s (select), empty, etc.
+        // Accept any selection target for compatibility with tmux and other tools
+        guard let semicolonIndex = data.firstIndex(of: UInt8(ascii: ";")) else {
             return
         }
-        
-        let base64 = Data(data[(data.startIndex+2)...])
+
+        let base64Start = data.index(after: semicolonIndex)
+        guard base64Start < data.endIndex else {
+            return
+        }
+
+        let base64 = Data(data[base64Start...])
+
+        // Handle query request (just "?" after semicolon) — ignore
+        if base64.count == 1 && base64[base64.startIndex] == UInt8(ascii: "?") {
+            return
+        }
+
         guard let content = Data(base64Encoded: base64) else {
             return
         }
-        
+
         tdel?.clipboardCopy(source: self, content: content)
     }
     

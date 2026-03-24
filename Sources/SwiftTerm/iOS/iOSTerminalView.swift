@@ -184,7 +184,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     private var progressReportTimer: Timer?
     private var lastProgressValue: UInt8?
     
-    var selection: SelectionService!
+    public var selection: SelectionService!
     var attrStrBuffer: CircularList<ViewLineInfo>!
     var images:[(image: TerminalImage, col: Int, row: Int)] = []
 
@@ -565,6 +565,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     
     func sharedMouseEvent (gestureRecognizer: UIGestureRecognizer, release: Bool)
     {
+        // Block mouse events when keyboard lock is on — user wants scroll/select only
+        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+            return
+        }
         let hit = calculateTapHit(gesture: gestureRecognizer)
         if let grid = hit.grid.toScreenCoordinate(from: terminal.displayBuffer) {
             terminal.sendEvent(buttonFlags: encodeFlags (release: release), x: grid.col, y: grid.row, pixelX: hit.pixels.col, pixelY: hit.pixels.row)
@@ -1057,7 +1061,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     func setupAccessoryView ()
     {
-        let short = UIDevice.current.userInterfaceIdiom == .phone
+        let short = UIScreen.main.bounds.width < 768
         let ta = TerminalAccessory(frame: CGRect(x: 0, y: 0, width: frame.width, height: short ? 36 : 48),
                                    inputViewStyle: .keyboard, container: self)
         #if !os(visionOS)
@@ -1263,8 +1267,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         let displayBuffer = terminal.displayBuffer
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
-        //contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
-        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
+
+        // Sync contentOffset to match the terminal's current yDisp
+        // This respects manual scrolling (scroll buttons, user swipes) instead of
+        // always snapping to the cursor position
+        contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
         //Xscroller.doubleValue = scrollPosition
         //Xscroller.knobProportion = scrollThumbsize
     }
@@ -1347,7 +1354,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
     
     open override var canBecomeFirstResponder: Bool {
-        true
+        // Block when keyboard lock is enabled
+        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+            return false
+        }
+        return true
     }
     
     open override var canBecomeFocused: Bool {
@@ -1923,10 +1934,35 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         return Character(newScalar)
     }
 
-    func ensureCaretIsVisible ()
+    @objc public func ensureCaretIsVisible ()
     {
+        // Check if smart cursor visibility is enabled (ShadowTerm custom feature)
+        let smartCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.smartCursorVisibility") as? Bool ?? true
+        if !smartCursor {
+            // Original SwiftTerm behavior: scroll to bottom
+            let displayBuffer = terminal.displayBuffer
+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
+            return
+        }
+
+        guard bounds.height > 0, cellDimension.height > 0 else { return }
+
         let displayBuffer = terminal.displayBuffer
-        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
+        let cursorRow = displayBuffer.y + displayBuffer.yDisp
+        let cursorY = CGFloat(cursorRow) * cellDimension.height
+        let visibleHeight = bounds.height - contentInset.bottom - contentInset.top
+        let currentOffset = contentOffset.y
+        let visibleBottom = currentOffset + visibleHeight
+        let cursorBottom = cursorY + cellDimension.height
+        let desiredPadding = cellDimension.height
+
+        if cursorBottom + desiredPadding > visibleBottom {
+            let newOffset = max(0, cursorBottom + desiredPadding - visibleHeight)
+            contentOffset = CGPoint(x: 0, y: newOffset)
+        } else if cursorY < currentOffset {
+            let finalOffset = max(0, cursorY - cellDimension.height)
+            contentOffset = CGPoint(x: 0, y: finalOffset)
+        }
     }
     
     public func deleteBackward() {
@@ -1998,6 +2034,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
  
     open override func becomeFirstResponder() -> Bool {
+        // Block keyboard from appearing when keyboard lock is enabled
+        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+            return false
+        }
         let response = super.becomeFirstResponder()
         if response {
             caretView?.updateCursorStyle()
