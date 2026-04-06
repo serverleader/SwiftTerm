@@ -161,6 +161,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     private var pointerInteraction: UIPointerInteraction?
     private var hoverGesture: UIHoverGestureRecognizer?
     private var didFinishSetup = false
+
+    /// When true, the terminal will not resize its columns/rows in response to bounds changes.
+    /// Content insets and scrolling still work normally.
+    public var resizeLocked: Bool = false
+
     var linkHighlightRange: [Terminal.LinkMatch.RowRange]?
     private var lastPointerLocation: CGPoint?
     
@@ -307,7 +312,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     {
         showsHorizontalScrollIndicator = true
         indicatorStyle = .white
-        
+
         setupKeyboardButtonColors()
         setupDisplayUpdates ();
         setupOptions ()
@@ -315,7 +320,30 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         setupGestures ()
         setupLinkReportingInteractions()
         setupAccessoryView ()
+        setupForegroundRedraw ()
         didFinishSetup = true
+    }
+
+    /// Force a full redraw when the app returns from background.
+    /// iOS can purge the CALayer backing store while the app is suspended,
+    /// leaving stale/partial content visible (especially in landscape).
+    func setupForegroundRedraw () {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self, self.didFinishSetup else { return }
+
+            // Discard the layer's cached rendering entirely.
+            // This forces iOS to call draw(_:) for the full visible area
+            // on the next display cycle, rather than reusing stale tiles.
+            self.layer.contents = nil
+            self.setNeedsDisplay(self.bounds)
+
+            // Also recalculate scroller in case contentSize drifted
+            self.updateScroller()
+        }
     }
 
 #if canImport(MetalKit)

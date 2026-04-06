@@ -116,7 +116,7 @@ extension TerminalView {
     public var caretFrame: CGRect {
         return caretView?.frame ?? CGRect.zero
     }
-    
+
     func setupOptions(width: CGFloat, height: CGFloat)
     {
         resetCaches ()
@@ -166,6 +166,11 @@ extension TerminalView {
     /// Returns true if this changed the number of columns/rows, false otherwise
     @discardableResult
     func processSizeChange (newSize: CGSize) -> Bool {
+        // Allow resize through if the terminal hasn't been sized yet (initial layout)
+        // or has a very small size (1 col/row). This prevents the "1 column" bug when
+        // resizeLocked is enabled before the terminal gets its first proper dimensions.
+        let needsInitialSize = terminal.cols <= 1 || terminal.rows <= 1
+        if resizeLocked && !needsInitialSize { return false }
         let newRows = Int (newSize.height / cellDimension.height)
         let newCols = Int (getEffectiveWidth (size: newSize) / cellDimension.width)
         

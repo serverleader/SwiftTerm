@@ -137,6 +137,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations, 
     var cellDimension: CellDimension!
     var caretView: CaretView!
     public var terminal: Terminal!
+    public var resizeLocked: Bool = false
     private var progressBarView: TerminalProgressBarView?
     private var progressReportTimer: Timer?
     private var lastProgressValue: UInt8?
