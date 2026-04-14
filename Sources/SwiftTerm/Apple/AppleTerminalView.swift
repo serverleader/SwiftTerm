@@ -189,7 +189,20 @@ extension TerminalView {
         }
         return false
     }
-    
+
+    /// ShadowTerm: public entry point to recompute rows/cols from an
+    /// *effective* size that differs from `bounds.size`. Needed when the
+    /// scroll view's contentInset reserves space (for a keyboard or
+    /// accessory bar) that shouldn't count as usable terminal area.
+    /// SwiftTerm's own layoutSubviews only triggers a recompute on
+    /// bounds.size changes, which miss this case.
+    ///
+    /// Returns true if the resize changed the number of cols/rows.
+    @discardableResult
+    public func applyEffectiveSize(_ effectiveSize: CGSize) -> Bool {
+        return processSizeChange(newSize: effectiveSize)
+    }
+
     // Computes the font dimensions once font.normal has been set
     func computeFontDimensions () -> CellDimension
     {
