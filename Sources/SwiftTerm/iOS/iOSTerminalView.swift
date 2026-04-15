@@ -334,7 +334,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         setupGestures ()
         setupLinkReportingInteractions()
         setupAccessoryView ()
-        setupForegroundRedraw ()
+        if ShadowTermCustomizations.enabled {
+            setupForegroundRedraw ()
+        }
         didFinishSetup = true
     }
 
@@ -711,8 +713,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     
     func sharedMouseEvent (gestureRecognizer: UIGestureRecognizer, release: Bool)
     {
-        // Block mouse events when keyboard lock is on — user wants scroll/select only
-        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+        // Block mouse events when keyboard lock is on ... user wants scroll/select only
+        if ShadowTermCustomizations.enabled
+            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
             return
         }
         let hit = calculateTapHit(gesture: gestureRecognizer)
@@ -1207,7 +1210,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     func setupAccessoryView ()
     {
-        let short = UIScreen.main.bounds.width < 768
+        let short: Bool
+        if ShadowTermCustomizations.enabled {
+            short = UIScreen.main.bounds.width < 768
+        } else {
+            short = UIDevice.current.userInterfaceIdiom == .phone
+        }
         let ta = TerminalAccessory(frame: CGRect(x: 0, y: 0, width: frame.width, height: short ? 36 : 48),
                                    inputViewStyle: .keyboard, container: self)
         #if !os(visionOS)
@@ -1414,10 +1422,15 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
-        // Sync contentOffset to match the terminal's current yDisp
-        // This respects manual scrolling (scroll buttons, user swipes) instead of
-        // always snapping to the cursor position
-        contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
+        if ShadowTermCustomizations.enabled {
+            // Sync contentOffset to match the terminal's current yDisp.
+            // Respects manual scrolling (scroll buttons, user swipes) instead of
+            // always snapping to the cursor position.
+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
+        } else {
+            // Upstream behavior: snap to bottom (cursor position).
+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
+        }
         //Xscroller.doubleValue = scrollPosition
         //Xscroller.knobProportion = scrollThumbsize
     }
@@ -1581,7 +1594,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     
     open override var canBecomeFirstResponder: Bool {
         // Block when keyboard lock is enabled
-        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+        if ShadowTermCustomizations.enabled
+            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
             return false
         }
         return true
@@ -2165,8 +2179,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // Suppress during sync blocks and inter-block gaps.
         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
 
-        // Check if smart cursor visibility is enabled (ShadowTerm custom feature)
-        let smartCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.smartCursorVisibility") as? Bool ?? true
+        // Smart cursor is one of our customizations. Master flag turns it off
+        // entirely; otherwise honour the user's per-feature sub-toggle.
+        let smartCursor = ShadowTermCustomizations.enabled
+            && (UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.smartCursorVisibility") as? Bool ?? true)
         if !smartCursor {
             // Original SwiftTerm behavior: scroll to bottom
             let displayBuffer = terminal.displayBuffer
@@ -2264,7 +2280,8 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
  
     open override func becomeFirstResponder() -> Bool {
         // Block keyboard from appearing when keyboard lock is enabled
-        if UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
+        if ShadowTermCustomizations.enabled
+            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
             return false
         }
         let response = super.becomeFirstResponder()

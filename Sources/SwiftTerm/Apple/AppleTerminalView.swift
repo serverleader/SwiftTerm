@@ -199,11 +199,15 @@ extension TerminalView {
         if newSize.width == 0 && newSize.height == 0 {
             return false
         }
-        // Allow resize through if the terminal hasn't been sized yet (initial layout)
-        // or has a very small size (1 col/row). This prevents the "1 column" bug when
-        // resizeLocked is enabled before the terminal gets its first proper dimensions.
-        let needsInitialSize = terminal.cols <= 1 || terminal.rows <= 1
-        if resizeLocked && !needsInitialSize { return false }
+        if ShadowTermCustomizations.enabled {
+            // Allow resize through if the terminal hasn't been sized yet (initial layout)
+            // or has a very small size (1 col/row). This prevents the "1 column" bug when
+            // resizeLocked is enabled before the terminal gets its first proper dimensions.
+            let needsInitialSize = terminal.cols <= 1 || terminal.rows <= 1
+            if resizeLocked && !needsInitialSize { return false }
+        } else {
+            if resizeLocked { return false }
+        }
         let newRows = Int (newSize.height / cellDimension.height)
         let newCols = Int (getEffectiveWidth (size: newSize) / cellDimension.width)
         

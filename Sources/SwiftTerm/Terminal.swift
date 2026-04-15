@@ -1872,9 +1872,23 @@ open class Terminal {
     //    ESC ] 52 ; c ; [base64 data] \a
     // where c is for copy and the only thing supported.
     func oscClipboard (_ data: ArraySlice<UInt8>) {
+        if !ShadowTermCustomizations.enabled {
+            // Upstream behavior: only "c;..." is accepted.
+            guard data.count >= 2,
+                  data[data.startIndex] == UInt8(ascii: "c"),
+                  data[data.startIndex+1] == UInt8(ascii: ";") else {
+                return
+            }
+            let base64 = Data(data[(data.startIndex+2)...])
+            guard let content = Data(base64Encoded: base64) else {
+                return
+            }
+            tdel?.clipboardCopy(source: self, content: content)
+            return
+        }
+        // ShadowTerm: accept any selection target for tmux compatibility.
         // OSC 52 format: selection;base64data
         // selection can be: c (clipboard), p (primary), s (select), empty, etc.
-        // Accept any selection target for compatibility with tmux and other tools
         guard let semicolonIndex = data.firstIndex(of: UInt8(ascii: ";")) else {
             return
         }
@@ -1886,7 +1900,7 @@ open class Terminal {
 
         let base64 = Data(data[base64Start...])
 
-        // Handle query request (just "?" after semicolon) — ignore
+        // Handle query request (just "?" after semicolon) ... ignore
         if base64.count == 1 && base64[base64.startIndex] == UInt8(ascii: "?") {
             return
         }
