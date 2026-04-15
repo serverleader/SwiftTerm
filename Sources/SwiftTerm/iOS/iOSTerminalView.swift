@@ -334,7 +334,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         setupGestures ()
         setupLinkReportingInteractions()
         setupAccessoryView ()
-        if ShadowTermCustomizations.enabled {
+        if ShadowTermCustomizations.isEnabled(.foregroundRedraw) {
             setupForegroundRedraw ()
         }
         didFinishSetup = true
@@ -1211,7 +1211,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     func setupAccessoryView ()
     {
         let short: Bool
-        if ShadowTermCustomizations.enabled {
+        if ShadowTermCustomizations.isEnabled(.wideAccessoryBar) {
             short = UIScreen.main.bounds.width < 768
         } else {
             short = UIDevice.current.userInterfaceIdiom == .phone
@@ -1422,7 +1422,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
-        if ShadowTermCustomizations.enabled {
+        if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
             // Sync contentOffset to match the terminal's current yDisp.
             // Respects manual scrolling (scroll buttons, user swipes) instead of
             // always snapping to the cursor position.
@@ -2179,10 +2179,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // Suppress during sync blocks and inter-block gaps.
         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
 
-        // Smart cursor is one of our customizations. Master flag turns it off
-        // entirely; otherwise honour the user's per-feature sub-toggle.
-        let smartCursor = ShadowTermCustomizations.enabled
-            && (UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.smartCursorVisibility") as? Bool ?? true)
+        let smartCursor = ShadowTermCustomizations.isEnabled(.smartCursor)
         if !smartCursor {
             // Original SwiftTerm behavior: scroll to bottom
             let displayBuffer = terminal.displayBuffer

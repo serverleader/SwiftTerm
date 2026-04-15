@@ -1872,7 +1872,7 @@ open class Terminal {
     //    ESC ] 52 ; c ; [base64 data] \a
     // where c is for copy and the only thing supported.
     func oscClipboard (_ data: ArraySlice<UInt8>) {
-        if !ShadowTermCustomizations.enabled {
+        if !ShadowTermCustomizations.isEnabled(.clipboardSync) {
             // Upstream behavior: only "c;..." is accepted.
             guard data.count >= 2,
                   data[data.startIndex] == UInt8(ascii: "c"),

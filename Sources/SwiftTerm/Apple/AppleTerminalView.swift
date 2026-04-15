@@ -199,7 +199,7 @@ extension TerminalView {
         if newSize.width == 0 && newSize.height == 0 {
             return false
         }
-        if ShadowTermCustomizations.enabled {
+        if ShadowTermCustomizations.isEnabled(.initialResizeBypass) {
             // Allow resize through if the terminal hasn't been sized yet (initial layout)
             // or has a very small size (1 col/row). This prevents the "1 column" bug when
             // resizeLocked is enabled before the terminal gets its first proper dimensions.
