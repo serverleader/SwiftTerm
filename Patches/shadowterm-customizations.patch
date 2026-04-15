@@ -1,0 +1,502 @@
+diff --git a/Sources/SwiftTerm/Apple/AppleTerminalView.swift b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+index fc6aef6..f56cba1 100644
+--- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
++++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
+@@ -143,7 +143,7 @@ extension TerminalView {
+     public var caretFrame: CGRect {
+         return caretView?.frame ?? CGRect.zero
+     }
+-    
++
+     func setupOptions(width: CGFloat, height: CGFloat)
+     {
+         resetCaches ()
+@@ -199,6 +199,15 @@ extension TerminalView {
+         if newSize.width == 0 && newSize.height == 0 {
+             return false
+         }
++        if ShadowTermCustomizations.isEnabled(.initialResizeBypass) {
++            // Allow resize through if the terminal hasn't been sized yet (initial layout)
++            // or has a very small size (1 col/row). This prevents the "1 column" bug when
++            // resizeLocked is enabled before the terminal gets its first proper dimensions.
++            let needsInitialSize = terminal.cols <= 1 || terminal.rows <= 1
++            if resizeLocked && !needsInitialSize { return false }
++        } else {
++            if resizeLocked { return false }
++        }
+         let newRows = Int (newSize.height / cellDimension.height)
+         let newCols = Int (getEffectiveWidth (size: newSize) / cellDimension.width)
+         
+@@ -217,7 +226,20 @@ extension TerminalView {
+         }
+         return false
+     }
+-    
++
++    /// ShadowTerm: public entry point to recompute rows/cols from an
++    /// *effective* size that differs from `bounds.size`. Needed when the
++    /// scroll view's contentInset reserves space (for a keyboard or
++    /// accessory bar) that shouldn't count as usable terminal area.
++    /// SwiftTerm's own layoutSubviews only triggers a recompute on
++    /// bounds.size changes, which miss this case.
++    ///
++    /// Returns true if the resize changed the number of cols/rows.
++    @discardableResult
++    public func applyEffectiveSize(_ effectiveSize: CGSize) -> Bool {
++        return processSizeChange(newSize: effectiveSize)
++    }
++
+     // Computes the font dimensions once font.normal has been set
+     func computeFontDimensions () -> CellDimension
+     {
+diff --git a/Sources/SwiftTerm/EscapeSequenceParser.swift b/Sources/SwiftTerm/EscapeSequenceParser.swift
+index 1300d78..93b61c4 100644
+--- a/Sources/SwiftTerm/EscapeSequenceParser.swift
++++ b/Sources/SwiftTerm/EscapeSequenceParser.swift
+@@ -565,6 +565,8 @@ public class EscapeSequenceParser {
+             return Terminal.DECRQSS(terminal: terminal)
+         } else if collect.isEmpty && code == 0x71 {  // "q"
+             return SixelDcsHandler(terminal: terminal)
++        } else if collect.isEmpty && code == 0x74 && ShadowTermCustomizations.isEnabled(.clipboardSync) {  // "t" — tmux DCS passthrough (ESC P tmux; ... ST)
++            return Terminal.TmuxPassthroughDcsHandler(terminal: terminal)
+         }
+         return nil
+     }
+diff --git a/Sources/SwiftTerm/Mac/MacTerminalView.swift b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+index c25cf40..d10f9ec 100644
+--- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
++++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
+@@ -158,6 +158,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+     var _fontSmoothing: Bool = true
+     var _lineSpacing: CGFloat = 1.0
+     public var terminal: Terminal!
++    public var resizeLocked: Bool = false
+ 
+     /// Marked (uncommitted) text from an input source (IME, dictation, etc.).
+     private var markedTextStorage: NSAttributedString?
+diff --git a/Sources/SwiftTerm/SelectionService.swift b/Sources/SwiftTerm/SelectionService.swift
+index 227309f..e3e7569 100644
+--- a/Sources/SwiftTerm/SelectionService.swift
++++ b/Sources/SwiftTerm/SelectionService.swift
+@@ -13,7 +13,7 @@ import Foundation
+  * property, and if that is true, then the `start` and `end` represents offsets within
+  * the terminal's buffer.  They are guaranteed to be ordered.
+  */
+-class SelectionService: CustomDebugStringConvertible {
++public class SelectionService: CustomDebugStringConvertible {
+     var terminal: Terminal
+     
+     public init (terminal: Terminal)
+diff --git a/Sources/SwiftTerm/ShadowTermCustomizations.swift b/Sources/SwiftTerm/ShadowTermCustomizations.swift
+new file mode 100644
+index 0000000..b03c237
+--- /dev/null
++++ b/Sources/SwiftTerm/ShadowTermCustomizations.swift
+@@ -0,0 +1,56 @@
++//
++//  ShadowTermCustomizations.swift
++//  SwiftTerm (ShadowTerm fork)
++//
++//  Per-feature toggles for fork-local behavior changes. Every customization
++//  defaults to active (= ShadowTerm behavior) so the package behaves as
++//  before unless the host app flips a UserDefault. The master kill switch
++//  `useUpstreamBehaviorKey` overrides every per-feature flag and forces
++//  upstream paths everywhere ... handy for A/B comparison.
++//
++
++import Foundation
++
++public enum ShadowTermCustomizations {
++    /// Master kill switch. When `true`, every customization falls back to
++    /// the upstream SwiftTerm code path regardless of the per-feature flags.
++    public static let useUpstreamBehaviorKey = "wiki.qaq.shadowterm.useUpstreamSwiftTerm"
++
++    /// Individually toggleable customizations. The raw value is the
++    /// UserDefaults key. Each defaults to `true` (= ShadowTerm behavior)
++    /// when the key is absent.
++    public enum Feature: String, CaseIterable {
++        /// Tmux DCS passthrough handler + relaxed OSC 52 clipboard parsing.
++        case clipboardSync = "wiki.qaq.shadowterm.cust.clipboardSync"
++        /// iOS scroll view tracks `displayBuffer.yDisp` instead of always
++        /// snapping to the bottom on `updateScroller`.
++        case scrollToYDisp = "wiki.qaq.shadowterm.cust.scrollToYDisp"
++        /// Smart caret visibility (only scrolls when the cursor leaves the
++        /// visible viewport, with padding) instead of upstream's
++        /// scroll-to-bottom on every render. Reuses the legacy key.
++        case smartCursor = "wiki.qaq.shadowterm.smartCursorVisibility"
++        /// Allow `processSizeChange` through when `resizeLocked` is set but
++        /// the terminal hasn't received its first proper dimensions yet.
++        case initialResizeBypass = "wiki.qaq.shadowterm.cust.initialResizeBypass"
++        /// Discard the iOS terminal layer's cached contents on
++        /// `didBecomeActiveNotification` so background → foreground
++        /// transitions don't show stale tiles.
++        case foregroundRedraw = "wiki.qaq.shadowterm.cust.foregroundRedraw"
++        /// Use a width-based heuristic (>=768pt = wide) for the iOS
++        /// keyboard accessory bar height instead of `userInterfaceIdiom`.
++        case wideAccessoryBar = "wiki.qaq.shadowterm.cust.wideAccessoryBar"
++    }
++
++    /// `true` when ShadowTerm's customizations are allowed at all. When
++    /// `false`, every per-feature check returns `false`.
++    public static var enabled: Bool {
++        !UserDefaults.standard.bool(forKey: useUpstreamBehaviorKey)
++    }
++
++    /// `true` when a specific customization should run. Master flag
++    /// overrides; otherwise reads the per-feature key with default `true`.
++    public static func isEnabled(_ feature: Feature) -> Bool {
++        guard enabled else { return false }
++        return UserDefaults.standard.object(forKey: feature.rawValue) as? Bool ?? true
++    }
++}
+diff --git a/Sources/SwiftTerm/Terminal.swift b/Sources/SwiftTerm/Terminal.swift
+index 22eefc6..2faf52e 100644
+--- a/Sources/SwiftTerm/Terminal.swift
++++ b/Sources/SwiftTerm/Terminal.swift
+@@ -1015,6 +1015,108 @@ open class Terminal {
+         }
+     }
+ 
++    // MARK: - Tmux DCS Passthrough Handler
++    //
++    // Handles DCS tmux; <escaped-content> ST sequences.
++    // Tmux wraps escape sequences (like OSC 52 clipboard) in DCS passthrough
++    // when forwarding them from inner programs to the outer terminal.
++    // ESC characters in the content are doubled (ESC ESC → ESC).
++    class TmuxPassthroughDcsHandler: DcsHandler {
++        var data: [UInt8] = []
++        unowned var terminal: Terminal
++
++        init(terminal: Terminal) {
++            self.terminal = terminal
++        }
++
++        func hook(collect: cstring, parameters: [Int], flag: UInt8) {
++            data = []
++        }
++
++        func put(data: ArraySlice<UInt8>) {
++            for x in data {
++                self.data.append(x)
++            }
++        }
++
++        func unhook() {
++            let prefix: [UInt8] = Array("mux;".utf8)
++            guard data.count > prefix.count,
++                  Array(data[0..<prefix.count]) == prefix else {
++                return
++            }
++
++            let escaped = Array(data[prefix.count...])
++
++            // Un-double ESC characters (tmux doubles them for escaping)
++            var unescaped: [UInt8] = []
++            unescaped.reserveCapacity(escaped.count)
++            var i = 0
++            while i < escaped.count {
++                if escaped[i] == 0x1B && i + 1 < escaped.count && escaped[i + 1] == 0x1B {
++                    unescaped.append(0x1B)
++                    i += 2
++                } else {
++                    unescaped.append(escaped[i])
++                    i += 1
++                }
++            }
++
++            // Notify that tmux passthrough was detected
++            DispatchQueue.main.async {
++                NotificationCenter.default.post(name: Notification.Name("TmuxPassthroughDetected"), object: nil)
++            }
++
++            // Dispatch OSC sequences directly (avoid parser reentrancy)
++            dispatchUnwrappedSequence(unescaped)
++        }
++
++        private func dispatchUnwrappedSequence(_ bytes: [UInt8]) {
++            // Look for OSC: ESC ] (0x1B 0x5D)
++            guard bytes.count >= 4,
++                  bytes[0] == 0x1B,
++                  bytes[1] == 0x5D else {
++                // For non-OSC sequences, defer to next run loop to avoid reentrancy
++                let capturedTerminal = terminal
++                let capturedBytes = bytes
++                DispatchQueue.main.async {
++                    capturedTerminal.parse(buffer: ArraySlice(capturedBytes))
++                }
++                return
++            }
++
++            let oscData = bytes[2...]
++            let semiColon = UInt8(ascii: ";")
++            guard let semiIdx = oscData.firstIndex(of: semiColon) else { return }
++
++            var oscCode = 0
++            for idx in oscData.startIndex..<semiIdx {
++                let ch = oscData[idx]
++                if ch >= 0x30 && ch <= 0x39 {
++                    oscCode = oscCode * 10 + Int(ch) - 48
++                }
++            }
++
++            // Strip trailing BEL (0x07) or ST (ESC \ = 0x1B 0x5C)
++            var contentEnd = oscData.endIndex
++            if contentEnd > oscData.startIndex && oscData[contentEnd - 1] == 0x07 {
++                contentEnd = oscData.index(before: contentEnd)
++            } else if contentEnd >= oscData.startIndex + 2
++                        && oscData[contentEnd - 1] == 0x5C
++                        && oscData[contentEnd - 2] == 0x1B {
++                contentEnd = oscData.index(contentEnd, offsetBy: -2)
++            }
++
++            let contentStart = oscData.index(after: semiIdx)
++            guard contentStart < contentEnd else { return }
++            let content = ArraySlice(oscData[contentStart..<contentEnd])
++
++            if let handler = terminal.parser.oscHandlers[oscCode] {
++                handler(content)
++            }
++        }
++    }
++
+     // Configures the EscapeSequenceParser with fallback handlers and print handling
+     func configureParser (_ parser: EscapeSequenceParser)
+     {
+@@ -1770,18 +1872,43 @@ open class Terminal {
+     //    ESC ] 52 ; c ; [base64 data] \a
+     // where c is for copy and the only thing supported.
+     func oscClipboard (_ data: ArraySlice<UInt8>) {
+-        // we require data to start with c; followed by base64 content
+-        guard data.count >= 2,
+-              data[data.startIndex] == UInt8(ascii: "c"),
+-              data[data.startIndex+1] == UInt8(ascii: ";") else {
++        if !ShadowTermCustomizations.isEnabled(.clipboardSync) {
++            // Upstream behavior: only "c;..." is accepted.
++            guard data.count >= 2,
++                  data[data.startIndex] == UInt8(ascii: "c"),
++                  data[data.startIndex+1] == UInt8(ascii: ";") else {
++                return
++            }
++            let base64 = Data(data[(data.startIndex+2)...])
++            guard let content = Data(base64Encoded: base64) else {
++                return
++            }
++            tdel?.clipboardCopy(source: self, content: content)
+             return
+         }
+-        
+-        let base64 = Data(data[(data.startIndex+2)...])
++        // ShadowTerm: accept any selection target for tmux compatibility.
++        // OSC 52 format: selection;base64data
++        // selection can be: c (clipboard), p (primary), s (select), empty, etc.
++        guard let semicolonIndex = data.firstIndex(of: UInt8(ascii: ";")) else {
++            return
++        }
++
++        let base64Start = data.index(after: semicolonIndex)
++        guard base64Start < data.endIndex else {
++            return
++        }
++
++        let base64 = Data(data[base64Start...])
++
++        // Handle query request (just "?" after semicolon) ... ignore
++        if base64.count == 1 && base64[base64.startIndex] == UInt8(ascii: "?") {
++            return
++        }
++
+         guard let content = Data(base64Encoded: base64) else {
+             return
+         }
+-        
++
+         tdel?.clipboardCopy(source: self, content: content)
+     }
+     
+diff --git a/Sources/SwiftTerm/iOS/iOSTerminalView.swift b/Sources/SwiftTerm/iOS/iOSTerminalView.swift
+index 5bcde5e..4bbb051 100644
+--- a/Sources/SwiftTerm/iOS/iOSTerminalView.swift
++++ b/Sources/SwiftTerm/iOS/iOSTerminalView.swift
+@@ -161,6 +161,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     private var pointerInteraction: UIPointerInteraction?
+     private var hoverGesture: UIHoverGestureRecognizer?
+     private var didFinishSetup = false
++
++    /// When true, the terminal will not resize its columns/rows in response to bounds changes.
++    /// Content insets and scrolling still work normally.
++    public var resizeLocked: Bool = false
++
+     var linkHighlightRange: [Terminal.LinkMatch.RowRange]?
+     private var lastPointerLocation: CGPoint?
+     
+@@ -214,12 +219,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+ #endif
+     var cellDimension: CellDimension
+     var caretView: CaretView?
++    var _fontSmoothing: Bool = true
++    var _lineSpacing: CGFloat = 1.0
+     var terminal: Terminal!
+     private var progressBarView: TerminalProgressBarView?
+     private var progressReportTimer: Timer?
+     private var lastProgressValue: UInt8?
+     
+-    var selection: SelectionService!
++    public var selection: SelectionService!
+     var attrStrBuffer: CircularList<ViewLineInfo>!
+     var images:[(image: TerminalImage, col: Int, row: Int)] = []
+ 
+@@ -319,7 +326,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     {
+         showsHorizontalScrollIndicator = true
+         indicatorStyle = .white
+-        
++
+         setupKeyboardButtonColors()
+         setupDisplayUpdates ();
+         setupOptions ()
+@@ -327,9 +334,34 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         setupGestures ()
+         setupLinkReportingInteractions()
+         setupAccessoryView ()
++        if ShadowTermCustomizations.isEnabled(.foregroundRedraw) {
++            setupForegroundRedraw ()
++        }
+         didFinishSetup = true
+     }
+ 
++    /// Force a full redraw when the app returns from background.
++    /// iOS can purge the CALayer backing store while the app is suspended,
++    /// leaving stale/partial content visible (especially in landscape).
++    func setupForegroundRedraw () {
++        NotificationCenter.default.addObserver(
++            forName: UIApplication.didBecomeActiveNotification,
++            object: nil,
++            queue: .main
++        ) { [weak self] _ in
++            guard let self = self, self.didFinishSetup else { return }
++
++            // Discard the layer's cached rendering entirely.
++            // This forces iOS to call draw(_:) for the full visible area
++            // on the next display cycle, rather than reusing stale tiles.
++            self.layer.contents = nil
++            self.setNeedsDisplay(self.bounds)
++
++            // Also recalculate scroller in case contentSize drifted
++            self.updateScroller()
++        }
++    }
++
+ #if canImport(MetalKit)
+     /// Enables or disables GPU-accelerated rendering via Metal.
+     ///
+@@ -681,6 +713,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     
+     func sharedMouseEvent (gestureRecognizer: UIGestureRecognizer, release: Bool)
+     {
++        // Block mouse events when keyboard lock is on ... user wants scroll/select only
++        if ShadowTermCustomizations.enabled
++            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
++            return
++        }
+         let hit = calculateTapHit(gesture: gestureRecognizer)
+         if let grid = hit.grid.toScreenCoordinate(from: terminal.displayBuffer) {
+             terminal.sendEvent(buttonFlags: encodeFlags (release: release), x: grid.col, y: grid.row, pixelX: hit.pixels.col, pixelY: hit.pixels.row)
+@@ -1173,7 +1210,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+ 
+     func setupAccessoryView ()
+     {
+-        let short = UIDevice.current.userInterfaceIdiom == .phone
++        let short: Bool
++        if ShadowTermCustomizations.isEnabled(.wideAccessoryBar) {
++            short = UIScreen.main.bounds.width < 768
++        } else {
++            short = UIDevice.current.userInterfaceIdiom == .phone
++        }
+         let ta = TerminalAccessory(frame: CGRect(x: 0, y: 0, width: frame.width, height: short ? 36 : 48),
+                                    inputViewStyle: .keyboard, container: self)
+         #if !os(visionOS)
+@@ -1379,8 +1421,16 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         let displayBuffer = terminal.displayBuffer
+         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
+                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
+-        //contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
+-        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
++
++        if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
++            // Sync contentOffset to match the terminal's current yDisp.
++            // Respects manual scrolling (scroll buttons, user swipes) instead of
++            // always snapping to the cursor position.
++            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
++        } else {
++            // Upstream behavior: snap to bottom (cursor position).
++            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
++        }
+         //Xscroller.doubleValue = scrollPosition
+         //Xscroller.knobProportion = scrollThumbsize
+     }
+@@ -1543,7 +1593,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
+     
+     open override var canBecomeFirstResponder: Bool {
+-        true
++        // Block when keyboard lock is enabled
++        if ShadowTermCustomizations.enabled
++            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
++            return false
++        }
++        return true
+     }
+     
+     open override var canBecomeFocused: Bool {
+@@ -2119,12 +2174,37 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         return Character(newScalar)
+     }
+ 
+-    func ensureCaretIsVisible ()
++    @objc public func ensureCaretIsVisible ()
+     {
+         // Suppress during sync blocks and inter-block gaps.
+         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
++
++        let smartCursor = ShadowTermCustomizations.isEnabled(.smartCursor)
++        if !smartCursor {
++            // Original SwiftTerm behavior: scroll to bottom
++            let displayBuffer = terminal.displayBuffer
++            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
++            return
++        }
++
++        guard bounds.height > 0, cellDimension.height > 0 else { return }
++
+         let displayBuffer = terminal.displayBuffer
+-        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
++        let cursorRow = displayBuffer.y + displayBuffer.yDisp
++        let cursorY = CGFloat(cursorRow) * cellDimension.height
++        let visibleHeight = bounds.height - contentInset.bottom - contentInset.top
++        let currentOffset = contentOffset.y
++        let visibleBottom = currentOffset + visibleHeight
++        let cursorBottom = cursorY + cellDimension.height
++        let desiredPadding = cellDimension.height
++
++        if cursorBottom + desiredPadding > visibleBottom {
++            let newOffset = max(0, cursorBottom + desiredPadding - visibleHeight)
++            contentOffset = CGPoint(x: 0, y: newOffset)
++        } else if cursorY < currentOffset {
++            let finalOffset = max(0, cursorY - cellDimension.height)
++            contentOffset = CGPoint(x: 0, y: finalOffset)
++        }
+     }
+     
+     public func deleteBackward() {
+@@ -2196,6 +2276,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     }
+  
+     open override func becomeFirstResponder() -> Bool {
++        // Block keyboard from appearing when keyboard lock is enabled
++        if ShadowTermCustomizations.enabled
++            && UserDefaults.standard.bool(forKey: "wiki.qaq.shadowterm.hideOnScreenKeyboard") {
++            return false
++        }
+         let response = super.becomeFirstResponder()
+         if response {
+             caretView?.updateCursorStyle()
