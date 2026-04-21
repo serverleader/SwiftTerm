@@ -1104,12 +1104,24 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // We rely on being our own UIScrollViewDelegate, which the class
         // declaration already conforms to. Just ensure the delegate is set.
         delegate = self
+        // Seed the baseline so the first user scroll doesn't produce a
+        // huge delta from 0 → actual contentOffset.
+        lastScrollWheelOffsetY = contentOffset.y
     }
 
     /// UIScrollViewDelegate: fires on every contentOffset change.
     public func scrollViewDidScroll(_ scrollView: UIScrollView) {
         guard !isSuppressingScroll else { return }
         guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else {
+            lastScrollWheelOffsetY = contentOffset.y
+            return
+        }
+
+        // Only convert USER-initiated scrolls (finger drag or trackpad).
+        // Programmatic contentOffset changes from updateScroller() or
+        // ensureCaretIsVisible() would otherwise produce ghost wheel
+        // events that confuse the remote TUI.
+        guard scrollView.isDragging || scrollView.isTracking else {
             lastScrollWheelOffsetY = contentOffset.y
             return
         }
