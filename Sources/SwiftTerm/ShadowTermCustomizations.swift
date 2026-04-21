@@ -39,6 +39,12 @@ public enum ShadowTermCustomizations {
         /// Use a width-based heuristic (>=768pt = wide) for the iOS
         /// keyboard accessory bar height instead of `userInterfaceIdiom`.
         case wideAccessoryBar = "wiki.qaq.shadowterm.cust.wideAccessoryBar"
+        /// Convert iOS scroll gestures (trackpad + finger) to mouse wheel
+        /// events (button 4/5) when the remote app has mouse reporting
+        /// enabled. Falls back to arrow up/down on alternate screen without
+        /// mouse mode. Without this, scrolling in TUIs like OpenCode or
+        /// Bubble Tea apps does nothing on iPad.
+        case scrollWheelReporting = "wiki.qaq.shadowterm.cust.scrollWheelReporting"
     }
 
     /// `true` when ShadowTerm's customizations are allowed at all. When

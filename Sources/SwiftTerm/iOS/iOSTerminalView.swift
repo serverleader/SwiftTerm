@@ -332,6 +332,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         setupOptions ()
         setupProgressBar()
         setupGestures ()
+        setupScrollWheelReporting()
         setupLinkReportingInteractions()
         setupAccessoryView ()
         if ShadowTermCustomizations.isEnabled(.foregroundRedraw) {
@@ -1075,6 +1076,89 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         singleTap.require(toFail: doubleTap)
         doubleTap.require(toFail: tripleTap)
+    }
+
+    // MARK: - ShadowTerm: Scroll-to-mouse-wheel conversion
+    //
+    // iOS UIScrollView consumes scroll gestures (trackpad + finger) as
+    // contentOffset changes.  TUIs like OpenCode / Bubble Tea expect
+    // mouse wheel events (button 4 = up, 5 = down) via SGR mouse
+    // reporting, or arrow-key fallback on alternate screen.  Without
+    // this, scrolling inside a TUI on iPad does nothing.
+    //
+    // We intercept the scroll view's own contentOffset changes and,
+    // when the remote has mouse reporting active, convert the delta
+    // into wheel events instead of letting the view scroll.
+
+    /// Accumulated scroll delta that hasn't yet produced a whole-line event.
+    private var scrollWheelAccumulator: CGFloat = 0
+    /// Last contentOffset.y so we can compute deltas.
+    private var lastScrollWheelOffsetY: CGFloat = 0
+    /// True while we're resetting contentOffset to suppress scroll; avoids
+    /// re-entering our own handler.
+    private var isSuppressingScroll = false
+
+    /// Called from the shared setup path. Installs the delegate hook that
+    /// lets us intercept scroll events.
+    func setupScrollWheelReporting() {
+        // We rely on being our own UIScrollViewDelegate, which the class
+        // declaration already conforms to. Just ensure the delegate is set.
+        delegate = self
+    }
+
+    /// UIScrollViewDelegate: fires on every contentOffset change.
+    public func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard !isSuppressingScroll else { return }
+        guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else {
+            lastScrollWheelOffsetY = contentOffset.y
+            return
+        }
+
+        let mouseReportingActive = allowMouseReporting && terminal.mouseMode != .off
+        let onAlternateScreen = terminal.isCurrentBufferAlternate
+
+        // Only intercept when the remote expects scroll input.
+        guard mouseReportingActive || onAlternateScreen else {
+            lastScrollWheelOffsetY = contentOffset.y
+            return
+        }
+
+        let delta = contentOffset.y - lastScrollWheelOffsetY
+        guard delta != 0 else { return }
+
+        scrollWheelAccumulator += delta
+        let lineHeight = cellDimension.height
+
+        if mouseReportingActive {
+            // Send mouse wheel events (button 4 = up, 5 = down).
+            while abs(scrollWheelAccumulator) >= lineHeight {
+                let button = scrollWheelAccumulator > 0 ? 5 : 4
+                let buttonFlags = terminal.encodeButton(
+                    button: button, release: false,
+                    shift: false, meta: false, control: false)
+                let col = terminal.cols / 2
+                let row = terminal.rows / 2
+                terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
+                                   pixelX: col, pixelY: row)
+                scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
+            }
+        } else {
+            // Alternate screen without mouse mode: send arrow keys.
+            while abs(scrollWheelAccumulator) >= lineHeight {
+                if scrollWheelAccumulator > 0 {
+                    sendKeyDown()
+                } else {
+                    sendKeyUp()
+                }
+                scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
+            }
+        }
+
+        // Prevent the scroll view from actually scrolling (keep the
+        // viewport pinned while the TUI handles it internally).
+        isSuppressingScroll = true
+        contentOffset = CGPoint(x: 0, y: lastScrollWheelOffsetY)
+        isSuppressingScroll = false
     }
 
     func setupLinkReportingInteractions ()
