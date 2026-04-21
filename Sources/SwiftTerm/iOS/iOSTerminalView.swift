@@ -1150,19 +1150,32 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         if mouseReportingActive {
             // Send mouse wheel events (button 4 = up, 5 = down).
-            // When scrollAtCursor is on, use cursor position so the
-            // scroll targets the focused pane in tmux / vim splits.
-            // When off, use center (better for single-pane TUI apps).
+            // Use the actual touch/pointer position from the scroll
+            // view's pan gesture so TUIs like OpenCode scroll the
+            // panel under the user's finger or trackpad pointer.
+            // Falls back to cursor position if the gesture location
+            // can't be resolved to a valid grid cell.
             let col: Int
             let row: Int
-            let scrollAtCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.scrollAtCursor") as? Bool ?? true
-            if scrollAtCursor {
-                let displayBuffer = terminal.displayBuffer
-                col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                row = min(max(displayBuffer.y, 0), terminal.rows - 1)
+            let gestureLocation = panGestureRecognizer.location(in: self)
+            let hit = calculateTapHit(point: gestureLocation)
+            if hit.grid.col >= 0 && hit.grid.col < terminal.cols &&
+               hit.grid.row >= 0 {
+                // Convert to screen coordinates (subtract yDisp for scrollback)
+                let screenRow = hit.grid.row - terminal.displayBuffer.yDisp
+                col = min(max(hit.grid.col, 0), terminal.cols - 1)
+                row = min(max(screenRow, 0), terminal.rows - 1)
             } else {
-                col = terminal.cols / 2
-                row = terminal.rows / 2
+                // Fallback: cursor position or center
+                let scrollAtCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.scrollAtCursor") as? Bool ?? true
+                if scrollAtCursor {
+                    let displayBuffer = terminal.displayBuffer
+                    col = min(max(displayBuffer.x, 0), terminal.cols - 1)
+                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
+                } else {
+                    col = terminal.cols / 2
+                    row = terminal.rows / 2
+                }
             }
             while abs(scrollWheelAccumulator) >= lineHeight {
                 let button = scrollWheelAccumulator > 0 ? 5 : 4
