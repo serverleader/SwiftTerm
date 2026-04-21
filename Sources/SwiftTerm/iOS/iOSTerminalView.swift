@@ -1097,6 +1097,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// True while we're resetting contentOffset to suppress scroll; avoids
     /// re-entering our own handler.
     private var isSuppressingScroll = false
+    /// True while code (not the user) is changing contentOffset. iPad
+    /// trackpad scroll is "indirect input" that does NOT set isDragging
+    /// or isTracking, so we can't use those to distinguish user vs
+    /// programmatic scrolls. Instead we wrap every known programmatic
+    /// contentOffset write with this flag.
+    var isProgrammaticScroll = false
 
     /// Called from the shared setup path. Installs the delegate hook that
     /// lets us intercept scroll events.
@@ -1117,11 +1123,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             return
         }
 
-        // Only convert USER-initiated scrolls (finger drag or trackpad).
-        // Programmatic contentOffset changes from updateScroller() or
-        // ensureCaretIsVisible() would otherwise produce ghost wheel
-        // events that confuse the remote TUI.
-        guard scrollView.isDragging || scrollView.isTracking else {
+        // Skip programmatic contentOffset changes (updateScroller,
+        // ensureCaretIsVisible, etc.). We can NOT use isDragging or
+        // isTracking here because iPad trackpad scroll is "indirect
+        // input" that leaves both false. Instead, every programmatic
+        // contentOffset write is wrapped with isProgrammaticScroll.
+        guard !isProgrammaticScroll else {
             lastScrollWheelOffsetY = contentOffset.y
             return
         }
@@ -1518,15 +1525,13 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
+        isProgrammaticScroll = true
         if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-            // Sync contentOffset to match the terminal's current yDisp.
-            // Respects manual scrolling (scroll buttons, user swipes) instead of
-            // always snapping to the cursor position.
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
         } else {
-            // Upstream behavior: snap to bottom (cursor position).
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
+        isProgrammaticScroll = false
         //Xscroller.doubleValue = scrollPosition
         //Xscroller.knobProportion = scrollThumbsize
     }
@@ -2274,6 +2279,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     {
         // Suppress during sync blocks and inter-block gaps.
         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
+
+        isProgrammaticScroll = true
+        defer { isProgrammaticScroll = false }
 
         let smartCursor = ShadowTermCustomizations.isEnabled(.smartCursor)
         if !smartCursor {
