@@ -1150,13 +1150,25 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         if mouseReportingActive {
             // Send mouse wheel events (button 4 = up, 5 = down).
+            // When scrollAtCursor is on, use cursor position so the
+            // scroll targets the focused pane in tmux / vim splits.
+            // When off, use center (better for single-pane TUI apps).
+            let col: Int
+            let row: Int
+            let scrollAtCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.scrollAtCursor") as? Bool ?? true
+            if scrollAtCursor {
+                let displayBuffer = terminal.displayBuffer
+                col = min(max(displayBuffer.x, 0), terminal.cols - 1)
+                row = min(max(displayBuffer.y, 0), terminal.rows - 1)
+            } else {
+                col = terminal.cols / 2
+                row = terminal.rows / 2
+            }
             while abs(scrollWheelAccumulator) >= lineHeight {
                 let button = scrollWheelAccumulator > 0 ? 5 : 4
                 let buttonFlags = terminal.encodeButton(
                     button: button, release: false,
                     shift: false, meta: false, control: false)
-                let col = terminal.cols / 2
-                let row = terminal.rows / 2
                 terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
                                    pixelX: col, pixelY: row)
                 scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
