@@ -1140,13 +1140,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // If the user is actively touching (isDragging), that's a real
         // gesture so clear the flag and let it through.
         if isKeyboardTransitioning {
-            if isDragging {
-                isKeyboardTransitioning = false
-            } else {
-                lastScrollWheelOffsetY = contentOffset.y
-                scrollWheelAccumulator = 0
-                return
-            }
+            lastScrollWheelOffsetY = contentOffset.y
+            scrollWheelAccumulator = 0
+            return
         }
 
         // Skip programmatic contentOffset changes (updateScroller,
