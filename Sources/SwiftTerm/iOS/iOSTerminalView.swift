@@ -1565,7 +1565,20 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
         isProgrammaticScroll = true
         if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
+            let targetY = CGFloat(displayBuffer.yDisp) * cellDimension.height
+            let jumpDistance = abs(targetY - contentOffset.y)
+            let screenHeight = bounds.height - contentInset.bottom - contentInset.top
+
+            // Skip large jumps (> 1 screenful) that happen during keyboard
+            // open/close or foreground return when yDisp is stale from a
+            // pending terminal resize. tmux's actual redraw (which arrives
+            // a few ms later) will call updateScroller again with the
+            // correct yDisp.
+            if screenHeight > 0 && jumpDistance > screenHeight {
+                // Still update contentSize (done above) but don't move viewport
+            } else {
+                contentOffset = CGPoint(x: 0, y: targetY)
+            }
         } else {
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
