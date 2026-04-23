@@ -2762,12 +2762,17 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         return (width, height)
     }
     
+    /// Called by the terminal when mouse mode changes. Public so the
+    /// app layer can observe and adjust gesture priorities.
+    public var onMouseModeChanged: ((Terminal.MouseMode) -> Void)?
+
     open func mouseModeChanged(source: Terminal) {
         if source.mouseMode != .off {
             enableMousePanGesture()
         } else {
             disableMousePanGesture()
         }
+        onMouseModeChanged?(source.mouseMode)
     }
     
     open func setTerminalTitle(source: Terminal, title: String) {
