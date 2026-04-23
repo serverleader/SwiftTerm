@@ -1095,153 +1095,90 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
 
     /// Accumulated scroll delta that hasn't yet produced a whole-line event.
     private var scrollWheelAccumulator: CGFloat = 0
-    /// Last contentOffset.y so we can compute deltas.
-    private var lastScrollWheelOffsetY: CGFloat = 0
-    /// True while we're resetting contentOffset to suppress scroll; avoids
-    /// re-entering our own handler.
-    private var isSuppressingScroll = false
-    /// True while code (not the user) is changing contentOffset. iPad
-    /// trackpad scroll is "indirect input" that does NOT set isDragging
-    /// or isTracking, so we can't use those to distinguish user vs
-    /// programmatic scrolls. Instead we wrap every known programmatic
-    /// contentOffset write with this flag.
-    public var isProgrammaticScroll = false
-    /// True during keyboard open/close transitions. contentInset changes
-    /// cause UIScrollView to internally adjust contentOffset on the next
-    /// layout pass, AFTER isProgrammaticScroll has reset. Without this
-    /// flag, the deferred adjustment fires scrollViewDidScroll which
-    /// sends mouse wheel events to tmux, entering scroll mode.
-    public var isKeyboardTransitioning = false
+    /// Track contentOffset.y at gesture start to compute delta.
+    private var panStartOffsetY: CGFloat = 0
 
-    /// Called from the shared setup path. Installs the delegate hook that
-    /// lets us intercept scroll events.
+    // isProgrammaticScroll kept for updateScroller/ensureCaretIsVisible
+    // wrapping (prevents scroll-to-yDisp from fighting user scroll).
+    public var isProgrammaticScroll = false
+
+    /// Called from the shared setup path. Adds a target to the pan
+    /// gesture recognizer to detect user scroll gestures. Unlike
+    /// scrollViewDidScroll (which fires for EVERYTHING including
+    /// programmatic changes, contentInset adjustments, and deferred
+    /// layout passes), the pan gesture ONLY fires during actual user
+    /// interaction. No flags needed. No phantom scroll possible.
     func setupScrollWheelReporting() {
-        // We rely on being our own UIScrollViewDelegate, which the class
-        // declaration already conforms to. Just ensure the delegate is set.
-        delegate = self
-        // Seed the baseline so the first user scroll doesn't produce a
-        // huge delta from 0 → actual contentOffset.
-        lastScrollWheelOffsetY = contentOffset.y
+        panGestureRecognizer.addTarget(self, action: #selector(handlePanForScrollWheel(_:)))
     }
 
-    /// UIScrollViewDelegate: fires on every contentOffset change.
-    public func scrollViewDidScroll(_ scrollView: UIScrollView) {
-        guard !isSuppressingScroll else { return }
-        guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else {
-            lastScrollWheelOffsetY = contentOffset.y
-            return
-        }
-
-        // Skip during keyboard open/close. contentInset changes cause
-        // UIScrollView to internally adjust contentOffset on the next
-        // layout pass, AFTER isProgrammaticScroll resets. Without this,
-        // the deferred adjustment sends mouse wheel events to tmux,
-        // causing it to enter scroll mode on every keyboard toggle.
-        // If the user is actively touching (isDragging), that's a real
-        // gesture so clear the flag and let it through.
-        if isKeyboardTransitioning {
-            lastScrollWheelOffsetY = contentOffset.y
-            scrollWheelAccumulator = 0
-            return
-        }
-
-        // Skip programmatic contentOffset changes (updateScroller,
-        // ensureCaretIsVisible, etc.). We can NOT use isDragging or
-        // isTracking here because iPad trackpad scroll is "indirect
-        // input" that leaves both false. Instead, every programmatic
-        // contentOffset write is wrapped with isProgrammaticScroll.
-        guard !isProgrammaticScroll else {
-            lastScrollWheelOffsetY = contentOffset.y
-            return
-        }
+    @objc private func handlePanForScrollWheel(_ gesture: UIPanGestureRecognizer) {
+        guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else { return }
 
         let mouseReportingActive = allowMouseReporting && terminal.mouseMode != .off
         let onAlternateScreen = terminal.isCurrentBufferAlternate
+        guard mouseReportingActive || onAlternateScreen else { return }
 
-        // Only intercept when the remote expects scroll input.
-        guard mouseReportingActive || onAlternateScreen else {
-            lastScrollWheelOffsetY = contentOffset.y
-            return
-        }
+        switch gesture.state {
+        case .began:
+            panStartOffsetY = contentOffset.y
+            scrollWheelAccumulator = 0
 
-        let delta = contentOffset.y - lastScrollWheelOffsetY
-        guard delta != 0 else { return }
+        case .changed:
+            let currentY = contentOffset.y
+            let delta = currentY - panStartOffsetY - scrollWheelAccumulator
+            let lineHeight = cellDimension.height
+            guard lineHeight > 0 else { return }
 
-        scrollWheelAccumulator += delta
-        let lineHeight = cellDimension.height
-
-        if mouseReportingActive {
-            // Send mouse wheel events (button 4 = up, 5 = down).
-            // Use the actual touch/pointer position from the scroll
-            // view's pan gesture so TUIs like OpenCode scroll the
-            // panel under the user's finger or trackpad pointer.
-            // Falls back to cursor position if the gesture location
-            // can't be resolved to a valid grid cell.
+            // Compute position from gesture location
             let col: Int
             let row: Int
-            let gestureLocation = panGestureRecognizer.location(in: self)
+            let gestureLocation = gesture.location(in: self)
             let hit = calculateTapHit(point: gestureLocation)
             if hit.grid.col >= 0 && hit.grid.col < terminal.cols &&
                hit.grid.row >= 0 {
-                // Convert to screen coordinates (subtract yDisp for scrollback)
                 let screenRow = hit.grid.row - terminal.displayBuffer.yDisp
                 col = min(max(hit.grid.col, 0), terminal.cols - 1)
                 row = min(max(screenRow, 0), terminal.rows - 1)
             } else {
-                // Fallback: use the configurable scroll position setting.
-                // Offset Y from bottom by tmuxBarBottomRows to avoid
-                // landing on the tmux status bar.
-                let bottomOffset = UserDefaults.standard.integer(forKey: "wiki.qaq.shadowterm.tmuxBarBottomRows")
-                let safeBottom = max(0, terminal.rows - 1 - bottomOffset - 2)
-                let scrollPos = UserDefaults.standard.string(forKey: "wiki.qaq.shadowterm.scrollPosition") ?? "cursor"
-                switch scrollPos {
-                case "cursor", "dynamic":
-                    // Actual cursor position. In tmux, the cursor is
-                    // always inside the focused pane, never on the bar.
-                    let displayBuffer = terminal.displayBuffer
-                    col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
-                case "bottom-left":
-                    col = 0
-                    row = safeBottom
-                case "bottom-right":
-                    col = terminal.cols - 1
-                    row = safeBottom
-                case "center":
-                    col = terminal.cols / 2
-                    row = terminal.rows / 2
-                default:
-                    let displayBuffer = terminal.displayBuffer
-                    col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
-                }
+                let displayBuffer = terminal.displayBuffer
+                col = min(max(displayBuffer.x, 0), terminal.cols - 1)
+                row = min(max(displayBuffer.y, 0), terminal.rows - 1)
             }
-            while abs(scrollWheelAccumulator) >= lineHeight {
-                let button = scrollWheelAccumulator > 0 ? 5 : 4
-                let buttonFlags = terminal.encodeButton(
-                    button: button, release: false,
-                    shift: false, meta: false, control: false)
-                terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
-                                   pixelX: col, pixelY: row)
-                scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
-            }
-        } else {
-            // Alternate screen without mouse mode: send arrow keys.
-            while abs(scrollWheelAccumulator) >= lineHeight {
-                if scrollWheelAccumulator > 0 {
-                    sendKeyDown()
-                } else {
-                    sendKeyUp()
-                }
-                scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
-            }
-        }
 
-        // Prevent the scroll view from actually scrolling (keep the
-        // viewport pinned while the TUI handles it internally).
-        isSuppressingScroll = true
-        contentOffset = CGPoint(x: 0, y: lastScrollWheelOffsetY)
-        isSuppressingScroll = false
+            if mouseReportingActive {
+                let totalDelta = currentY - panStartOffsetY
+                while abs(totalDelta - scrollWheelAccumulator) >= lineHeight {
+                    let button = (totalDelta - scrollWheelAccumulator) > 0 ? 5 : 4
+                    let buttonFlags = terminal.encodeButton(
+                        button: button, release: false,
+                        shift: false, meta: false, control: false)
+                    terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
+                                       pixelX: col, pixelY: row)
+                    scrollWheelAccumulator += (totalDelta - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
+                }
+            } else {
+                let totalDelta = currentY - panStartOffsetY
+                while abs(totalDelta - scrollWheelAccumulator) >= lineHeight {
+                    if (totalDelta - scrollWheelAccumulator) > 0 {
+                        sendKeyDown()
+                    } else {
+                        sendKeyUp()
+                    }
+                    scrollWheelAccumulator += (totalDelta - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
+                }
+            }
+
+            // Pin the viewport so UIScrollView doesn't physically scroll
+            // while the TUI handles it
+            contentOffset = CGPoint(x: 0, y: panStartOffsetY)
+
+        case .ended, .cancelled:
+            scrollWheelAccumulator = 0
+
+        default:
+            break
+        }
     }
 
     func setupLinkReportingInteractions ()
@@ -1589,13 +1526,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
-        isProgrammaticScroll = true
         if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
         } else {
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
-        isProgrammaticScroll = false
         //Xscroller.doubleValue = scrollPosition
         //Xscroller.knobProportion = scrollThumbsize
     }
@@ -2343,9 +2278,6 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     {
         // Suppress during sync blocks and inter-block gaps.
         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
-
-        isProgrammaticScroll = true
-        defer { isProgrammaticScroll = false }
 
         let smartCursor = ShadowTermCustomizations.isEnabled(.smartCursor)
         if !smartCursor {
