@@ -1190,7 +1190,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 // Offset Y from bottom by tmuxBarBottomRows to avoid
                 // landing on the tmux status bar.
                 let bottomOffset = UserDefaults.standard.integer(forKey: "wiki.qaq.shadowterm.tmuxBarBottomRows")
-                let safeBottom = max(0, terminal.rows - 1 - bottomOffset - 1)
+                let safeBottom = max(0, terminal.rows - 1 - bottomOffset - 2)
                 let scrollPos = UserDefaults.standard.string(forKey: "wiki.qaq.shadowterm.scrollPosition") ?? "cursor"
                 switch scrollPos {
                 case "cursor":
