@@ -1106,6 +1106,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// programmatic scrolls. Instead we wrap every known programmatic
     /// contentOffset write with this flag.
     public var isProgrammaticScroll = false
+    /// True during keyboard open/close transitions. contentInset changes
+    /// cause UIScrollView to internally adjust contentOffset on the next
+    /// layout pass, AFTER isProgrammaticScroll has reset. Without this
+    /// flag, the deferred adjustment fires scrollViewDidScroll which
+    /// sends mouse wheel events to tmux, entering scroll mode.
+    public var isKeyboardTransitioning = false
 
     /// Called from the shared setup path. Installs the delegate hook that
     /// lets us intercept scroll events.
@@ -1123,6 +1129,17 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         guard !isSuppressingScroll else { return }
         guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else {
             lastScrollWheelOffsetY = contentOffset.y
+            return
+        }
+
+        // Skip during keyboard open/close. contentInset changes cause
+        // UIScrollView to internally adjust contentOffset on the next
+        // layout pass, AFTER isProgrammaticScroll resets. Without this,
+        // the deferred adjustment sends mouse wheel events to tmux,
+        // causing it to enter scroll mode on every keyboard toggle.
+        guard !isKeyboardTransitioning else {
+            lastScrollWheelOffsetY = contentOffset.y
+            scrollWheelAccumulator = 0
             return
         }
 
