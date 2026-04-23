@@ -1123,10 +1123,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         case .began:
             lastPanTranslationY = 0
             scrollWheelAccumulator = 0
-            // Prevent UIScrollView from physically scrolling while
-            // we send mouse wheel events to the TUI. The TUI handles
-            // scroll internally. Re-enabled on gesture end.
-            isScrollEnabled = false
+            // Do NOT set isScrollEnabled = false here. That cancels
+            // the pan gesture itself (UIScrollView kills its own pan
+            // when scroll is disabled). The UIScrollView will also
+            // physically scroll, but that's acceptable — the TUI
+            // receives mouse events AND the terminal buffer scrolls.
 
         case .changed:
             // Use translation in SUPERVIEW coordinates so our
@@ -1181,7 +1182,6 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         case .ended, .cancelled:
             scrollWheelAccumulator = 0
             lastPanTranslationY = 0
-            isScrollEnabled = true
 
         default:
             break
