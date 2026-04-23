@@ -1137,10 +1137,16 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // layout pass, AFTER isProgrammaticScroll resets. Without this,
         // the deferred adjustment sends mouse wheel events to tmux,
         // causing it to enter scroll mode on every keyboard toggle.
-        guard !isKeyboardTransitioning else {
-            lastScrollWheelOffsetY = contentOffset.y
-            scrollWheelAccumulator = 0
-            return
+        // If the user is actively touching (isDragging), that's a real
+        // gesture so clear the flag and let it through.
+        if isKeyboardTransitioning {
+            if isDragging {
+                isKeyboardTransitioning = false
+            } else {
+                lastScrollWheelOffsetY = contentOffset.y
+                scrollWheelAccumulator = 0
+                return
+            }
         }
 
         // Skip programmatic contentOffset changes (updateScroller,
