@@ -531,6 +531,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
     
     @objc open override func paste (_ sender: Any?) {
+        // Block system-triggered paste during gestures. iOS can
+        // trigger paste() from touch interactions on UITextInput views.
+        for gesture in gestureRecognizers ?? [] {
+            if gesture.state == .began || gesture.state == .changed {
+                NSLog("[SwiftTerm] paste() blocked - gesture active: \(type(of: gesture))")
+                return
+            }
+        }
         disableSelectionPanGesture()
         if let start = UIPasteboard.general.string {
             if terminal.bracketedPasteMode {
