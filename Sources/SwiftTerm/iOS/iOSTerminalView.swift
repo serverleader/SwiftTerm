@@ -1193,10 +1193,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 let safeBottom = max(0, terminal.rows - 1 - bottomOffset - 2)
                 let scrollPos = UserDefaults.standard.string(forKey: "wiki.qaq.shadowterm.scrollPosition") ?? "cursor"
                 switch scrollPos {
-                case "cursor":
+                case "cursor", "dynamic":
+                    // Actual cursor position. In tmux, the cursor is
+                    // always inside the focused pane, never on the bar.
                     let displayBuffer = terminal.displayBuffer
                     col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                    row = safeBottom
+                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
                 case "bottom-left":
                     col = 0
                     row = safeBottom
@@ -1207,8 +1209,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                     col = terminal.cols / 2
                     row = terminal.rows / 2
                 default:
-                    col = 0
-                    row = safeBottom
+                    let displayBuffer = terminal.displayBuffer
+                    col = min(max(displayBuffer.x, 0), terminal.cols - 1)
+                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
                 }
             }
             while abs(scrollWheelAccumulator) >= lineHeight {
