@@ -1093,109 +1093,22 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     // when the remote has mouse reporting active, convert the delta
     // into wheel events instead of letting the view scroll.
 
-    /// Accumulated scroll delta that hasn't yet produced a whole-line event.
-    private var scrollWheelAccumulator: CGFloat = 0
-    /// Previous translation value to compute frame-by-frame delta.
-    private var lastPanTranslationY: CGFloat = 0
-
-    // isProgrammaticScroll kept for updateScroller/ensureCaretIsVisible
-    // wrapping (prevents scroll-to-yDisp from fighting user scroll).
+    // isProgrammaticScroll kept for potential future use.
     public var isProgrammaticScroll = false
 
-    /// Dedicated 2-finger pan gesture for scroll-wheel reporting.
-    /// Separate from UIScrollView's own panGestureRecognizer so we
-    /// can disable UIScrollView scroll during the gesture without
-    /// killing the gesture itself.
-    private var scrollWheelPanGesture: UIPanGestureRecognizer?
-
     func setupScrollWheelReporting() {
-        // Always 2-finger for the continuous pan gesture. 1-finger pan
-        // would conflict with UIScrollView's built-in pan and tap
-        // handling. The swipe handler (1 or 2 finger from settings)
-        // already handles fast scroll gestures in tmux.
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePanForScrollWheel(_:)))
-        pan.minimumNumberOfTouches = 2
-        pan.maximumNumberOfTouches = 2
-        pan.cancelsTouchesInView = false
-        addGestureRecognizer(pan)
-        scrollWheelPanGesture = pan
+        // Scroll-wheel via gestures is handled by the scroll buttons
+        // (TerminalView.swift overlay). Adding pan/swipe gesture
+        // handlers for scroll caused too many conflicts with
+        // UIScrollView's own pan, tap handling, keyboard transitions,
+        // and the swipe-hold-repeat feature. The buttons are the
+        // reliable path for tmux scroll.
     }
 
-    @objc private func handlePanForScrollWheel(_ gesture: UIPanGestureRecognizer) {
-        guard ShadowTermCustomizations.isEnabled(.scrollWheelReporting) else { return }
-
-        let mouseReportingActive = allowMouseReporting && terminal.mouseMode != .off
-        let onAlternateScreen = terminal.isCurrentBufferAlternate
-        guard mouseReportingActive || onAlternateScreen else { return }
-
-        switch gesture.state {
-        case .began:
-            lastPanTranslationY = 0
-            scrollWheelAccumulator = 0
-            // This is a SEPARATE gesture (not UIScrollView's own pan),
-            // so disabling scroll won't kill it.
-            isScrollEnabled = false
-            // receives mouse events AND the terminal buffer scrolls.
-
-        case .changed:
-            // Use translation in SUPERVIEW coordinates so our
-            // contentOffset changes don't corrupt the value.
-            let parentView = superview ?? self
-            let translationY = gesture.translation(in: parentView).y
-            let frameDelta = translationY - lastPanTranslationY
-            lastPanTranslationY = translationY
-
-            let lineHeight = cellDimension.height
-            guard lineHeight > 0, abs(frameDelta) > 0 else { return }
-
-            scrollWheelAccumulator += frameDelta
-
-            // Position from gesture location
-            let col: Int
-            let row: Int
-            let gestureLocation = gesture.location(in: self)
-            let hit = calculateTapHit(point: gestureLocation)
-            if hit.grid.col >= 0 && hit.grid.col < terminal.cols &&
-               hit.grid.row >= 0 {
-                let screenRow = hit.grid.row - terminal.displayBuffer.yDisp
-                col = min(max(hit.grid.col, 0), terminal.cols - 1)
-                row = min(max(screenRow, 0), terminal.rows - 1)
-            } else {
-                let displayBuffer = terminal.displayBuffer
-                col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                row = min(max(displayBuffer.y, 0), terminal.rows - 1)
-            }
-
-            if mouseReportingActive {
-                while abs(scrollWheelAccumulator) >= lineHeight {
-                    let button = scrollWheelAccumulator > 0 ? 5 : 4
-                    let buttonFlags = terminal.encodeButton(
-                        button: button, release: false,
-                        shift: false, meta: false, control: false)
-                    terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
-                                       pixelX: col, pixelY: row)
-                    scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
-                }
-            } else {
-                while abs(scrollWheelAccumulator) >= lineHeight {
-                    if scrollWheelAccumulator > 0 {
-                        sendKeyDown()
-                    } else {
-                        sendKeyUp()
-                    }
-                    scrollWheelAccumulator -= scrollWheelAccumulator > 0 ? lineHeight : -lineHeight
-                }
-            }
-
-        case .ended, .cancelled:
-            scrollWheelAccumulator = 0
-            lastPanTranslationY = 0
-            isScrollEnabled = true
-
-        default:
-            break
-        }
-    }
+    // Scroll-wheel gesture handling removed. The dedicated pan gesture
+    // caused too many conflicts with UIScrollView, tap handling,
+    // keyboard transitions, and swipe-hold-repeat. Scroll in tmux
+    // is reliably handled by the scroll overlay buttons.
 
     func setupLinkReportingInteractions ()
     {
