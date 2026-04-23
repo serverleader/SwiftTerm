@@ -358,8 +358,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             self.layer.contents = nil
             self.setNeedsDisplay(self.bounds)
 
-            // Also recalculate scroller in case contentSize drifted
-            self.updateScroller()
+            // DO NOT call updateScroller() here. The terminal buffer
+            // may not be current yet (SSH reconnecting, tmux redrawing).
+            // yDisp can be 0 at this point, which jumps the viewport to
+            // the top of scrollback. The next terminal output will
+            // trigger updateScroller naturally with the correct yDisp.
         }
     }
 
@@ -1166,15 +1169,17 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 col = min(max(hit.grid.col, 0), terminal.cols - 1)
                 row = min(max(screenRow, 0), terminal.rows - 1)
             } else {
-                // Fallback: cursor position or center
+                // Fallback: cursor column + bottom row. Bottom row avoids
+                // tmux losing scroll state; cursor column targets the
+                // active pane in vertical splits.
                 let scrollAtCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.scrollAtCursor") as? Bool ?? true
                 if scrollAtCursor {
                     let displayBuffer = terminal.displayBuffer
                     col = min(max(displayBuffer.x, 0), terminal.cols - 1)
-                    row = min(max(displayBuffer.y, 0), terminal.rows - 1)
+                    row = terminal.rows - 1
                 } else {
                     col = terminal.cols / 2
-                    row = terminal.rows / 2
+                    row = terminal.rows - 1
                 }
             }
             while abs(scrollWheelAccumulator) >= lineHeight {
