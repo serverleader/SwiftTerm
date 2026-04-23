@@ -1169,16 +1169,24 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                 col = min(max(hit.grid.col, 0), terminal.cols - 1)
                 row = min(max(screenRow, 0), terminal.rows - 1)
             } else {
-                // Fallback: cursor column + bottom row. Bottom row avoids
-                // tmux losing scroll state; cursor column targets the
-                // active pane in vertical splits.
-                let scrollAtCursor = UserDefaults.standard.object(forKey: "wiki.qaq.shadowterm.scrollAtCursor") as? Bool ?? true
-                if scrollAtCursor {
+                // Fallback: use the configurable scroll position setting.
+                let scrollPos = UserDefaults.standard.string(forKey: "wiki.qaq.shadowterm.scrollPosition") ?? "cursor"
+                switch scrollPos {
+                case "cursor":
                     let displayBuffer = terminal.displayBuffer
                     col = min(max(displayBuffer.x, 0), terminal.cols - 1)
                     row = terminal.rows - 1
-                } else {
+                case "bottom-left":
+                    col = 0
+                    row = terminal.rows - 1
+                case "bottom-right":
+                    col = terminal.cols - 1
+                    row = terminal.rows - 1
+                case "center":
                     col = terminal.cols / 2
+                    row = terminal.rows / 2
+                default:
+                    col = 0
                     row = terminal.rows - 1
                 }
             }
