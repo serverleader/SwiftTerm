@@ -1034,11 +1034,20 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
     
     var panMouseGesture: UIPanGestureRecognizer?
+    /// Swipe gestures that panMouseGesture should require to fail.
+    /// Set by the app layer so swipes take priority over mouse drag.
+    public var swipeGesturesToRespect: [UIGestureRecognizer] = []
+
     func enableMousePanGesture () {
         guard panMouseGesture == nil else {
             return
         }
         let gesture = UIPanGestureRecognizer (target: self, action: #selector(panMouseHandler))
+        // Make pan require swipe gestures to fail first so swipes
+        // (arrow keys / scroll) take priority over mouse drag.
+        for swipe in swipeGesturesToRespect {
+            gesture.require(toFail: swipe)
+        }
         addGestureRecognizer(gesture)
         panMouseGesture = gesture
     }
