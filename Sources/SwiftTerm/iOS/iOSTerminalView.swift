@@ -1106,10 +1106,6 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// programmatic scrolls. Instead we wrap every known programmatic
     /// contentOffset write with this flag.
     public var isProgrammaticScroll = false
-    /// When true, updateScroller skips contentOffset changes. Set by the
-    /// app layer during keyboard transitions to prevent scroll jumps from
-    /// stale yDisp while the terminal is resizing.
-    public var suppressScrollerUpdates = false
 
     /// Called from the shared setup path. Installs the delegate hook that
     /// lets us intercept scroll events.
@@ -1568,15 +1564,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
         isProgrammaticScroll = true
-        // Skip contentOffset update during keyboard transitions to prevent
-        // scroll jumps from stale yDisp. The flag is set by the app layer
-        // around applyEffectiveTerminalSize calls during keyboard show/hide.
-        if !suppressScrollerUpdates {
-            if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-                contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
-            } else {
-                contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
-            }
+        if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
+        } else {
+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
         isProgrammaticScroll = false
         //Xscroller.doubleValue = scrollPosition
