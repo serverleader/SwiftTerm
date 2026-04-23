@@ -1125,12 +1125,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             scrollWheelAccumulator = 0
 
         case .changed:
-            let currentY = contentOffset.y
-            let delta = currentY - panStartOffsetY - scrollWheelAccumulator
+            // Use gesture translation (cumulative finger movement), NOT
+            // contentOffset delta. We pin contentOffset each frame, so
+            // contentOffset-based delta would always be 0.
+            let translation = gesture.translation(in: self).y
             let lineHeight = cellDimension.height
             guard lineHeight > 0 else { return }
 
-            // Compute position from gesture location
+            // Position from gesture location
             let col: Int
             let row: Int
             let gestureLocation = gesture.location(in: self)
@@ -1147,30 +1149,27 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
             }
 
             if mouseReportingActive {
-                let totalDelta = currentY - panStartOffsetY
-                while abs(totalDelta - scrollWheelAccumulator) >= lineHeight {
-                    let button = (totalDelta - scrollWheelAccumulator) > 0 ? 5 : 4
+                while abs(translation - scrollWheelAccumulator) >= lineHeight {
+                    let button = (translation - scrollWheelAccumulator) > 0 ? 5 : 4
                     let buttonFlags = terminal.encodeButton(
                         button: button, release: false,
                         shift: false, meta: false, control: false)
                     terminal.sendEvent(buttonFlags: buttonFlags, x: col, y: row,
                                        pixelX: col, pixelY: row)
-                    scrollWheelAccumulator += (totalDelta - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
+                    scrollWheelAccumulator += (translation - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
                 }
             } else {
-                let totalDelta = currentY - panStartOffsetY
-                while abs(totalDelta - scrollWheelAccumulator) >= lineHeight {
-                    if (totalDelta - scrollWheelAccumulator) > 0 {
+                while abs(translation - scrollWheelAccumulator) >= lineHeight {
+                    if (translation - scrollWheelAccumulator) > 0 {
                         sendKeyDown()
                     } else {
                         sendKeyUp()
                     }
-                    scrollWheelAccumulator += (totalDelta - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
+                    scrollWheelAccumulator += (translation - scrollWheelAccumulator) > 0 ? lineHeight : -lineHeight
                 }
             }
 
-            // Pin the viewport so UIScrollView doesn't physically scroll
-            // while the TUI handles it
+            // Pin viewport so UIScrollView doesn't physically scroll
             contentOffset = CGPoint(x: 0, y: panStartOffsetY)
 
         case .ended, .cancelled:
