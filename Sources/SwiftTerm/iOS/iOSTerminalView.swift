@@ -535,10 +535,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         // trigger paste() from touch interactions on UITextInput views.
         for gesture in gestureRecognizers ?? [] {
             if gesture.state == .began || gesture.state == .changed {
-                NSLog("[SwiftTerm] paste() blocked - gesture active: \(type(of: gesture))")
+                NSLog("[Scroll] paste() BLOCKED - gesture active: \(type(of: gesture)) state=\(gesture.state.rawValue)")
                 return
             }
         }
+        NSLog("[Scroll] paste() ALLOWED - no gesture active, clipboard=\(UIPasteboard.general.string?.prefix(40) ?? "nil")")
         disableSelectionPanGesture()
         if let start = UIPasteboard.general.string {
             if terminal.bracketedPasteMode {
@@ -1761,6 +1762,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     */
     open func insertText(_ text: String) {
         uitiLog("insertText(\(text.debugDescription)) \(textInputStateDescription())")
+        if text.count > 2 {
+            NSLog("[Scroll] insertText called with \(text.count) chars: \(text.prefix(40).debugDescription)")
+        }
         commitTextInput(text, applyModifiers: true)
     }
     private func kittyEncoder() -> KittyKeyboardEncoder {
