@@ -1109,6 +1109,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     private var scrollWheelPanGesture: UIPanGestureRecognizer?
 
     func setupScrollWheelReporting() {
+        // Always 2-finger for the continuous pan gesture. 1-finger pan
+        // would conflict with UIScrollView's built-in pan and tap
+        // handling. The swipe handler (1 or 2 finger from settings)
+        // already handles fast scroll gestures in tmux.
         let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePanForScrollWheel(_:)))
         pan.minimumNumberOfTouches = 2
         pan.maximumNumberOfTouches = 2
