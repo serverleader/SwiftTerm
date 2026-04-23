@@ -1105,7 +1105,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// or isTracking, so we can't use those to distinguish user vs
     /// programmatic scrolls. Instead we wrap every known programmatic
     /// contentOffset write with this flag.
-    var isProgrammaticScroll = false
+    public var isProgrammaticScroll = false
 
     /// Called from the shared setup path. Installs the delegate hook that
     /// lets us intercept scroll events.
