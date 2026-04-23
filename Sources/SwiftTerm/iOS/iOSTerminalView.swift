@@ -1102,14 +1102,19 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     // wrapping (prevents scroll-to-yDisp from fighting user scroll).
     public var isProgrammaticScroll = false
 
-    /// Called from the shared setup path. Adds a target to the pan
-    /// gesture recognizer to detect user scroll gestures. Unlike
-    /// scrollViewDidScroll (which fires for EVERYTHING including
-    /// programmatic changes, contentInset adjustments, and deferred
-    /// layout passes), the pan gesture ONLY fires during actual user
-    /// interaction. No flags needed. No phantom scroll possible.
+    /// Dedicated 2-finger pan gesture for scroll-wheel reporting.
+    /// Separate from UIScrollView's own panGestureRecognizer so we
+    /// can disable UIScrollView scroll during the gesture without
+    /// killing the gesture itself.
+    private var scrollWheelPanGesture: UIPanGestureRecognizer?
+
     func setupScrollWheelReporting() {
-        panGestureRecognizer.addTarget(self, action: #selector(handlePanForScrollWheel(_:)))
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePanForScrollWheel(_:)))
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
+        pan.cancelsTouchesInView = false
+        addGestureRecognizer(pan)
+        scrollWheelPanGesture = pan
     }
 
     @objc private func handlePanForScrollWheel(_ gesture: UIPanGestureRecognizer) {
@@ -1123,10 +1128,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         case .began:
             lastPanTranslationY = 0
             scrollWheelAccumulator = 0
-            // Do NOT set isScrollEnabled = false here. That cancels
-            // the pan gesture itself (UIScrollView kills its own pan
-            // when scroll is disabled). The UIScrollView will also
-            // physically scroll, but that's acceptable — the TUI
+            // This is a SEPARATE gesture (not UIScrollView's own pan),
+            // so disabling scroll won't kill it.
+            isScrollEnabled = false
             // receives mouse events AND the terminal buffer scrolls.
 
         case .changed:
@@ -1182,6 +1186,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         case .ended, .cancelled:
             scrollWheelAccumulator = 0
             lastPanTranslationY = 0
+            isScrollEnabled = true
 
         default:
             break
