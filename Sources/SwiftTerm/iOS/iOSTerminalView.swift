@@ -1106,6 +1106,10 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// programmatic scrolls. Instead we wrap every known programmatic
     /// contentOffset write with this flag.
     public var isProgrammaticScroll = false
+    /// When true, updateScroller skips contentOffset changes. Set by the
+    /// app layer during keyboard transitions to prevent scroll jumps from
+    /// stale yDisp while the terminal is resizing.
+    public var suppressScrollerUpdates = false
 
     /// Called from the shared setup path. Installs the delegate hook that
     /// lets us intercept scroll events.
@@ -1564,23 +1568,15 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
         isProgrammaticScroll = true
-        if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-            let targetY = CGFloat(displayBuffer.yDisp) * cellDimension.height
-            let jumpDistance = abs(targetY - contentOffset.y)
-            let screenHeight = bounds.height - contentInset.bottom - contentInset.top
-
-            // Skip large jumps (> 1 screenful) that happen during keyboard
-            // open/close or foreground return when yDisp is stale from a
-            // pending terminal resize. tmux's actual redraw (which arrives
-            // a few ms later) will call updateScroller again with the
-            // correct yDisp.
-            if screenHeight > 0 && jumpDistance > screenHeight {
-                // Still update contentSize (done above) but don't move viewport
+        // Skip contentOffset update during keyboard transitions to prevent
+        // scroll jumps from stale yDisp. The flag is set by the app layer
+        // around applyEffectiveTerminalSize calls during keyboard show/hide.
+        if !suppressScrollerUpdates {
+            if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
+                contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
             } else {
-                contentOffset = CGPoint(x: 0, y: targetY)
+                contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
             }
-        } else {
-            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
         isProgrammaticScroll = false
         //Xscroller.doubleValue = scrollPosition
