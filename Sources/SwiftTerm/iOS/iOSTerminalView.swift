@@ -1479,7 +1479,26 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 
         if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
+            // Bottom-anchor: align the last visible row's bottom edge with
+            // the visible-area bottom (just above contentInset.bottom).
+            // The naive `yDisp * cellHeight` offset top-anchors the rows,
+            // which leaves a leftover band of empty pixels at the BOTTOM
+            // when bounds.height isn't an exact multiple of cellHeight
+            // (e.g. cellH=19, bounds=319, leftover=15px). On every
+            // shell scroll (Enter, command output) updateScroller fires
+            // and that bottom gap reappears flush against the keyboard.
+            // By computing the offset as "last full row bottom" minus
+            // the visible area, the leftover moves to the TOP where it's
+            // much less visually disruptive (often hidden behind nav /
+            // safe-area). Cursor stays flush at the bottom edge.
+            let cellH = cellDimension.height
+            let visibleHeight = max(0, bounds.height - contentInset.top - contentInset.bottom)
+            let lastRowBottom = (CGFloat(displayBuffer.yDisp) + floor(visibleHeight / max(1, cellH))) * cellH
+            let bottomAnchored = lastRowBottom - visibleHeight - contentInset.top
+            // Clamp to >= 0 so we never produce a negative offset (which
+            // UIScrollView would treat as overscroll). When yDisp is so
+            // small the math goes negative, fall back to top-anchor.
+            contentOffset = CGPoint(x: 0, y: max(0, bottomAnchored))
         } else {
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
