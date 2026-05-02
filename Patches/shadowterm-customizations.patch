@@ -476,7 +476,15 @@ index 5bcde5e..4bbb051 100644
 +        let currentOffset = contentOffset.y
 +        let visibleBottom = currentOffset + visibleHeight
 +        let cursorBottom = cursorY + cellDimension.height
-+        let desiredPadding = cellDimension.height
++        // No breathing-room padding below the cursor. The previous
++        // value (one full cellHeight) caused the cursor's "scroll
++        // when near bottom" threshold to trigger as soon as the
++        // cursor landed on the last visible row, which left an
++        // empty row of space between the cursor and the visible
++        // bottom (or the keyboard's top edge). With padding = 0
++        // the cursor sits flush; scrolling only happens when it
++        // actually moves below the visible area.
++        let desiredPadding: CGFloat = 0
 +
 +        if cursorBottom + desiredPadding > visibleBottom {
 +            let newOffset = max(0, cursorBottom + desiredPadding - visibleHeight)
