@@ -1478,6 +1478,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         } else {
             contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
         }
+
+        // Diagnostic: log state when keyboard is visible
+        if contentInset.bottom > 0 {
+            let cursorRow = displayBuffer.y
+            let cursorY = CGFloat(cursorRow + displayBuffer.yDisp) * cellDimension.height
+            let visibleBottom = contentOffset.y + bounds.height - contentInset.bottom
+            print("[Scroll] updateScroller: lines=\(displayBuffer.lines.count) rows=\(displayBuffer.rows) yDisp=\(displayBuffer.yDisp) cursor=row\(cursorRow) cursorY=\(cursorY) contentOffset=\(contentOffset.y) visibleBottom=\(visibleBottom) insetBottom=\(contentInset.bottom) bounds=\(bounds.height) contentSize=\(contentSize.height) altBuf=\(terminal.isCurrentBufferAlternate)")
+        }
         //Xscroller.doubleValue = scrollPosition
         //Xscroller.knobProportion = scrollThumbsize
     }
@@ -2246,7 +2254,17 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         let currentOffset = contentOffset.y
         let visibleBottom = currentOffset + visibleHeight
         let cursorBottom = cursorY + cellDimension.height
-        let desiredPadding = cellDimension.height
+        // No breathing-room padding below the cursor. The previous value
+        // (cellDimension.height = one full row) made the cursor's "scroll
+        // when near bottom" threshold trigger as soon as the cursor
+        // landed on the last visible row, scrolling everything up by one
+        // row and leaving an empty row of space between the new cursor
+        // position and the visible bottom. ShadowTerm users felt that as
+        // "the prompt moves up a little when I type the first letter."
+        // With padding = 0, the cursor sits flush with the visible bottom
+        // and only triggers a scroll when it actually moves *below* the
+        // visible area.
+        let desiredPadding: CGFloat = 0
 
         if cursorBottom + desiredPadding > visibleBottom {
             let newOffset = max(0, cursorBottom + desiredPadding - visibleHeight)
