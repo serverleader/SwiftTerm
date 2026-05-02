@@ -218,6 +218,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     }
 #endif
     var cellDimension: CellDimension
+    /// Public accessor for the rendered cell metrics. Lets the host app
+    /// reason about pixel-level layout (e.g. computing the leftover band
+    /// between `bounds.height` and `floor(bounds.height / cellHeight) *
+    /// cellHeight` when laying out around the keyboard accessory).
+    public var renderedCellSize: CGSize { cellDimension }
     var caretView: CaretView?
     var _fontSmoothing: Bool = true
     var _lineSpacing: CGFloat = 1.0
