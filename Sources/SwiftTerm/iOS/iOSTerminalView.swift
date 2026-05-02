@@ -223,6 +223,19 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
     /// between `bounds.height` and `floor(bounds.height / cellHeight) *
     /// cellHeight` when laying out around the keyboard accessory).
     public var renderedCellSize: CGSize { cellDimension }
+
+    /// When `true` and the terminal is in alt-screen mode (no scrollback,
+    /// content height exactly fits the visible rows), shift the rendered
+    /// content down so the LAST row aligns with the visible bottom. The
+    /// cell-rounding leftover band moves to the top (typically hidden
+    /// behind nav bar / safe-area). When `false` (default), content is
+    /// top-anchored as upstream SwiftTerm does.
+    ///
+    /// Used by ShadowTerm's mosh path: mosh's framebuffer protocol always
+    /// runs in alt-screen with `displayBuffer.yDisp = 0`, so the existing
+    /// bottom-anchor in `updateScroller` (which only fires when yDisp > 0)
+    /// can't help. SSH leaves this off to preserve its current behavior.
+    public var altScreenBottomAnchor: Bool = false
     var caretView: CaretView?
     var _fontSmoothing: Bool = true
     var _lineSpacing: CGFloat = 1.0
@@ -1477,6 +1490,40 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         let displayBuffer = terminal.displayBuffer
         contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                               height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
+
+        // ShadowTerm: alt-screen bottom-anchor. When `altScreenBottomAnchor`
+        // is set AND we're in alt-screen (no scrollback, content height
+        // exactly fits the visible rows), push the rendered content down
+        // via a top inset so the leftover band moves to the top instead of
+        // the bottom. This is the mosh-only path: mosh's framebuffer
+        // protocol always uses alt-screen with yDisp=0, so the regular
+        // bottom-anchor logic below clamps to 0 and leaves a visible gap
+        // between the last row and the keyboard. SSH leaves
+        // altScreenBottomAnchor at its default false and runs through the
+        // unchanged path below.
+        if altScreenBottomAnchor && terminal.isCurrentBufferAlternate {
+            let cellH = cellDimension.height
+            if cellH > 0 {
+                let frameH = max(0, bounds.height - contentInset.bottom)
+                let visibleRows = floor(frameH / cellH)
+                let leftover = max(0, frameH - visibleRows * cellH)
+                if contentInset.top != leftover {
+                    contentInset.top = leftover
+                }
+                // contentInset.top extends the valid contentOffset range
+                // down to -leftover; setting it to -leftover puts the
+                // content's y=0 at viewport y=leftover, leaving an empty
+                // band at the top and the last row flush at the bottom.
+                contentOffset = CGPoint(x: 0, y: -leftover)
+            }
+            return
+        }
+
+        // Reset any leftover top inset from a prior alt-screen anchor pass
+        // so SSH and non-anchored paths see a fresh inset state.
+        if contentInset.top != 0 && !altScreenBottomAnchor {
+            contentInset.top = 0
+        }
 
         if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
             // Bottom-anchor: align the last visible row's bottom edge with
