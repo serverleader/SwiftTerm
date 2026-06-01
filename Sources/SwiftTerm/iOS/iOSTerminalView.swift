@@ -347,39 +347,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         setupScrollWheelReporting()
         setupLinkReportingInteractions()
         setupAccessoryView ()
-        if ShadowTermCustomizations.isEnabled(.foregroundRedraw) {
-            setupForegroundRedraw ()
-        }
         didFinishSetup = true
-    }
-
-    /// Force a full redraw when the app returns from background.
-    /// iOS can purge the CALayer backing store while the app is suspended,
-    /// leaving stale/partial content visible (especially in landscape).
-    func setupForegroundRedraw () {
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self, self.didFinishSetup else { return }
-
-            // Full relayout + repaint. A plain setNeedsDisplay is not
-            // enough here: when the orientation is unchanged across the
-            // background cycle the bounds don't change, so nothing
-            // recomputes cell metrics or marks the buffer dirty, and the
-            // layer backing store may be stale or purged. forceForegroundRedraw
-            // resets the caches, recomputes metrics, marks the whole buffer
-            // dirty and forces the repaint ... the same refresh a keyboard
-            // toggle produced, without needing the toggle.
-            self.forceForegroundRedraw()
-
-            // DO NOT call updateScroller() here. The terminal buffer
-            // may not be current yet (SSH reconnecting, tmux redrawing).
-            // yDisp can be 0 at this point, which jumps the viewport to
-            // the top of scrollback. The next terminal output will
-            // trigger updateScroller naturally with the correct yDisp.
-        }
     }
 
 #if canImport(MetalKit)

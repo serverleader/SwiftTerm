@@ -132,37 +132,6 @@ extension TerminalView {
         #endif
     }
 
-    /// ShadowTerm: force a complete recompute + repaint of the terminal,
-    /// equivalent to the refresh that reassigning `font` triggers but
-    /// without the font round-trip.
-    ///
-    /// Why this exists: when the app returns from the background in the
-    /// *same* orientation it left in, the view's bounds are unchanged, so
-    /// `layoutSubviews` never calls `processSizeChange` and SwiftTerm does
-    /// no relayout. A plain `setNeedsDisplay` then only re-blits the layer
-    /// backing store ... which iOS may have purged or left stale while we
-    /// were suspended ... and `updateDisplay` early-returns because no
-    /// buffer line is marked dirty. The user is left staring at half-blank
-    /// or frozen content that only a keyboard toggle (which changes bounds)
-    /// clears. Resetting the glyph/colour caches, recomputing cell metrics,
-    /// marking the whole buffer dirty and forcing a repaint reproduces that
-    /// keyboard-toggle refresh on demand, without changing the row/col
-    /// geometry (the host app's effective-size pass owns sizing).
-    public func forceForegroundRedraw () {
-        resetCaches ()
-        cellDimension = computeFontDimensions ()
-        terminal.updateFullScreen ()
-        #if os(iOS) || os(visionOS)
-        // Drop any backing-store tiles iOS purged or kept stale while
-        // suspended so draw(_:) regenerates the full visible area.
-        layer.contents = nil
-        setNeedsDisplay (bounds)
-        #else
-        needsDisplay = true
-        #endif
-        queuePendingDisplay ()
-    }
-
     func updateCaretView ()
     {
         guard let caretView else { return }

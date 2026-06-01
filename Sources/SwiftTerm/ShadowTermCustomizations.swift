@@ -32,10 +32,6 @@ public enum ShadowTermCustomizations {
         /// Allow `processSizeChange` through when `resizeLocked` is set but
         /// the terminal hasn't received its first proper dimensions yet.
         case initialResizeBypass = "wiki.qaq.shadowterm.cust.initialResizeBypass"
-        /// Discard the iOS terminal layer's cached contents on
-        /// `didBecomeActiveNotification` so background → foreground
-        /// transitions don't show stale tiles.
-        case foregroundRedraw = "wiki.qaq.shadowterm.cust.foregroundRedraw"
         /// Use a width-based heuristic (>=768pt = wide) for the iOS
         /// keyboard accessory bar height instead of `userInterfaceIdiom`.
         case wideAccessoryBar = "wiki.qaq.shadowterm.cust.wideAccessoryBar"
