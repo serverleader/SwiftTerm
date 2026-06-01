@@ -370,11 +370,15 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
         ) { [weak self] _ in
             guard let self = self, self.didFinishSetup else { return }
 
-            // Discard the layer's cached rendering entirely.
-            // This forces iOS to call draw(_:) for the full visible area
-            // on the next display cycle, rather than reusing stale tiles.
-            self.layer.contents = nil
-            self.setNeedsDisplay(self.bounds)
+            // Full relayout + repaint. A plain setNeedsDisplay is not
+            // enough here: when the orientation is unchanged across the
+            // background cycle the bounds don't change, so nothing
+            // recomputes cell metrics or marks the buffer dirty, and the
+            // layer backing store may be stale or purged. forceForegroundRedraw
+            // resets the caches, recomputes metrics, marks the whole buffer
+            // dirty and forces the repaint ... the same refresh a keyboard
+            // toggle produced, without needing the toggle.
+            self.forceForegroundRedraw()
 
             // DO NOT call updateScroller() here. The terminal buffer
             // may not be current yet (SSH reconnecting, tmux redrawing).
