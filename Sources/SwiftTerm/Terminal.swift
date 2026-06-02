@@ -424,9 +424,15 @@ open class Terminal {
     private var lastCharIndex: Int32 = Int32(CharData.maxRune + 1)
     var gLevel: UInt8 = 0
     var cursorBlink: Bool = false
-    
-    var allow80To132 = true
-    
+
+    // ShadowTerm: default OFF (xterm's c132/allowColumnSwitching default).
+    // When true, a remote-emitted DECCOLM (ESC[?3h/l) resizes this terminal to
+    // 132/80 columns and fires sizeChanged, which our SSH layer pushes back to
+    // the PTY as a window-size change ... aborting GNU screen ("Aborted because
+    // of window size change") and fighting the real device width. Apps that
+    // genuinely want column switching still opt in via DECSET 40 (ESC[?40h).
+    var allow80To132 = false
+
     public var parser: EscapeSequenceParser
     var kittyGraphicsState = KittyGraphicsState()
     var kittyPlacementContext: KittyPlacementContext?
@@ -874,9 +880,10 @@ open class Terminal {
         
         cc.send8bit = false
         conformance = .vt500
-        
-        allow80To132 = true
-        
+
+        // ShadowTerm: reset to the safe default (OFF). See declaration above.
+        allow80To132 = false
+
         xtermTitleSetUtf = false
         xtermTitleQueryUtf = false
         
