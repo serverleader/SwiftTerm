@@ -86,6 +86,7 @@ struct ViewLineInfo {
 extension TerminalView {
     typealias CellDimension = CGSize
 
+#if os(macOS)
     /// Controls whether font smoothing (sub-pixel rendering) is enabled during glyph drawing.
     /// Set to `false` to get thinner strokes on Retina displays, matching iTerm2's "Thin strokes" setting.
     /// Defaults to `true` (standard macOS font smoothing).
@@ -93,6 +94,7 @@ extension TerminalView {
         get { _fontSmoothing }
         set { _fontSmoothing = newValue }
     }
+#endif
 
     /// Multiplier for vertical line spacing. 1.0 = default (ascent + descent + leading).
     /// Set to 1.1 for 110% vertical spacing (matches iTerm2's vertical spacing setting).
@@ -375,6 +377,7 @@ extension TerminalView {
 
     public func synchronizedOutputChanged (source: Terminal, active: Bool)
     {
+        SyncDebug.log("delegate active=\(active)")
         if !active {
             updateScroller()
             queuePendingDisplay()
@@ -1371,13 +1374,28 @@ extension TerminalView {
                             #endif
 
                             if endColumn >= terminal.cols {
-                                rect.size.width = frame.width - rect.origin.x
+                                if backgroundColor == nativeBackgroundColor {
+                                    rect.size.width = frame.width - rect.origin.x
+                                } else {
+                                    let marginX = rect.origin.x + rect.size.width
+                                    if marginX < frame.width {
+                                        let marginRect = CGRect(x: marginX, y: rect.origin.y, width: frame.width - marginX, height: rect.size.height)
+                                        #if os(macOS)
+                                        nativeBackgroundColor.setFill()
+                                        marginRect.fill()
+                                        #else
+                                        context.setFillColor(nativeBackgroundColor.cgColor)
+                                        context.fill(marginRect)
+                                        #endif
+                                    }
+                                }
                             }
 
                             #if os(macOS)
                             backgroundColor.setFill()
                             rect.fill()
                             #else
+                            context.setFillColor(backgroundColor.cgColor)
                             context.fill(rect)
                             #endif
                         }
@@ -1617,21 +1635,40 @@ extension TerminalView {
     {
         defer { pendingDisplay = false }
         if terminal.synchronizedOutputActive {
+            SyncDebug.log("paint-blocked sync=true")
             return
         }
         updateCursorPosition()
         guard let (rowStart, rowEnd) = terminal.getUpdateRange () else {
+            SyncDebug.log("paint-norange (cursor-only)")
             if notifyUpdateChanges {
                 let buffer = terminal.displayBuffer
                 let y = buffer.yDisp+buffer.y
                 terminalDelegate?.rangeChanged (source: self, startY: y, endY: y)
             }
+            // Pure cursor moves (e.g. CSI C / CSI D from word-jumps) don't
+            // mark any row dirty, so getUpdateRange() returns nil. With Metal
+            // the cursor is drawn by the renderer reading buffer.x/y at draw
+            // time, and MTKView is paused — without an explicit redraw the
+            // cursor stays at its old screen position until something else
+            // dirties a row. Trigger a redraw if the cursor moved.
+            #if canImport(MetalKit)
+            if metalView != nil {
+                let buffer = terminal.displayBuffer
+                let cursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
+                if lastRenderedCursor == nil || lastRenderedCursor! != cursor {
+                    lastRenderedCursor = cursor
+                    requestMetalDisplay()
+                }
+            }
+            #endif
             return
         }
         if notifyUpdateChanges {
             terminalDelegate?.rangeChanged (source: self, startY: rowStart, endY: rowEnd)
         }
 
+        SyncDebug.log("paint rows=\(rowStart)-\(rowEnd)")
         terminal.clearUpdateRange ()
 
         #if os(macOS)
@@ -1675,6 +1712,7 @@ extension TerminalView {
                     metalDirtyRange = nil
                 }
             }
+            lastRenderedCursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
             requestMetalDisplay()
         } else {
             setNeedsDisplay(region)
@@ -1688,6 +1726,8 @@ extension TerminalView {
         #if canImport(MetalKit)
         if metalView != nil {
             metalDirtyRange = metalVisibleRange()
+            let buffer = terminal.displayBuffer
+            lastRenderedCursor = (x: buffer.x, y: buffer.yBase + buffer.y, hidden: terminal.cursorHidden)
             requestMetalDisplay()
         } else {
             setNeedsDisplay(bounds)
@@ -1757,6 +1797,7 @@ extension TerminalView {
     func queuePendingDisplay ()
     {
         if terminal.synchronizedOutputActive {
+            SyncDebug.log("queue-blocked sync=true")
             return
         }
         // throttle
@@ -1765,10 +1806,12 @@ extension TerminalView {
             // let fps30 = 16670000*2
             let fpsDelay = fps60
             pendingDisplay = true
+            SyncDebug.log("queue-scheduled (+16.67ms)")
             DispatchQueue.main.asyncAfter(
                 deadline: DispatchTime (uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds + UInt64 (fpsDelay)),
                 execute: updateDisplay)
         } else {
+            SyncDebug.log("queue-noop (already pending)")
         }
     }
 
@@ -1966,6 +2009,7 @@ extension TerminalView {
     
     func feedFinish ()
     {
+        SyncDebug.log("feedFinish sync=\(terminal.synchronizedOutputActive)")
         suspendDisplayUpdates ()
         queuePendingDisplay()
     }
