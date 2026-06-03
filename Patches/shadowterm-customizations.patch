@@ -1,8 +1,25 @@
 diff --git a/Sources/SwiftTerm/Apple/AppleTerminalView.swift b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
-index fc6aef6..f56cba1 100644
+index 2cfbda2..88afa3f 100644
 --- a/Sources/SwiftTerm/Apple/AppleTerminalView.swift
 +++ b/Sources/SwiftTerm/Apple/AppleTerminalView.swift
-@@ -143,7 +143,7 @@ extension TerminalView {
+@@ -126,14 +126,14 @@ extension TerminalView {
+             resize(cols: newCols, rows: newRows)
+         }
+         updateCaretView()
+-        
++
+         #if os(macOS)
+         needsDisplay = true
+         #else
+         setNeedsDisplay(frame)
+         #endif
+     }
+-    
++
+     func updateCaretView ()
+     {
+         guard let caretView else { return }
+@@ -145,7 +145,7 @@ extension TerminalView {
      public var caretFrame: CGRect {
          return caretView?.frame ?? CGRect.zero
      }
@@ -11,7 +28,7 @@ index fc6aef6..f56cba1 100644
      func setupOptions(width: CGFloat, height: CGFloat)
      {
          resetCaches ()
-@@ -199,6 +199,15 @@ extension TerminalView {
+@@ -201,6 +201,15 @@ extension TerminalView {
          if newSize.width == 0 && newSize.height == 0 {
              return false
          }
@@ -27,7 +44,7 @@ index fc6aef6..f56cba1 100644
          let newRows = Int (newSize.height / cellDimension.height)
          let newCols = Int (getEffectiveWidth (size: newSize) / cellDimension.width)
          
-@@ -217,7 +226,20 @@ extension TerminalView {
+@@ -219,7 +228,20 @@ extension TerminalView {
          }
          return false
      }
@@ -50,10 +67,10 @@ index fc6aef6..f56cba1 100644
      func computeFontDimensions () -> CellDimension
      {
 diff --git a/Sources/SwiftTerm/EscapeSequenceParser.swift b/Sources/SwiftTerm/EscapeSequenceParser.swift
-index 1300d78..93b61c4 100644
+index 0de8e70..abbdccf 100644
 --- a/Sources/SwiftTerm/EscapeSequenceParser.swift
 +++ b/Sources/SwiftTerm/EscapeSequenceParser.swift
-@@ -565,6 +565,8 @@ public class EscapeSequenceParser {
+@@ -567,6 +567,8 @@ public class EscapeSequenceParser {
              return Terminal.DECRQSS(terminal: terminal)
          } else if collect.isEmpty && code == 0x71 {  // "q"
              return SixelDcsHandler(terminal: terminal)
@@ -63,10 +80,10 @@ index 1300d78..93b61c4 100644
          return nil
      }
 diff --git a/Sources/SwiftTerm/Mac/MacTerminalView.swift b/Sources/SwiftTerm/Mac/MacTerminalView.swift
-index c25cf40..d10f9ec 100644
+index 93eac10..5ff65bd 100644
 --- a/Sources/SwiftTerm/Mac/MacTerminalView.swift
 +++ b/Sources/SwiftTerm/Mac/MacTerminalView.swift
-@@ -158,6 +158,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
+@@ -175,6 +175,7 @@ open class TerminalView: NSView, NSTextInputClient, NSUserInterfaceValidations,
      var _fontSmoothing: Bool = true
      var _lineSpacing: CGFloat = 1.0
      public var terminal: Terminal!
@@ -89,10 +106,10 @@ index 227309f..e3e7569 100644
      public init (terminal: Terminal)
 diff --git a/Sources/SwiftTerm/ShadowTermCustomizations.swift b/Sources/SwiftTerm/ShadowTermCustomizations.swift
 new file mode 100644
-index 0000000..b03c237
+index 0000000..8f1f977
 --- /dev/null
 +++ b/Sources/SwiftTerm/ShadowTermCustomizations.swift
-@@ -0,0 +1,56 @@
+@@ -0,0 +1,58 @@
 +//
 +//  ShadowTermCustomizations.swift
 +//  SwiftTerm (ShadowTerm fork)
@@ -127,13 +144,15 @@ index 0000000..b03c237
 +        /// Allow `processSizeChange` through when `resizeLocked` is set but
 +        /// the terminal hasn't received its first proper dimensions yet.
 +        case initialResizeBypass = "wiki.qaq.shadowterm.cust.initialResizeBypass"
-+        /// Discard the iOS terminal layer's cached contents on
-+        /// `didBecomeActiveNotification` so background → foreground
-+        /// transitions don't show stale tiles.
-+        case foregroundRedraw = "wiki.qaq.shadowterm.cust.foregroundRedraw"
 +        /// Use a width-based heuristic (>=768pt = wide) for the iOS
 +        /// keyboard accessory bar height instead of `userInterfaceIdiom`.
 +        case wideAccessoryBar = "wiki.qaq.shadowterm.cust.wideAccessoryBar"
++        /// Convert iOS scroll gestures (trackpad + finger) to mouse wheel
++        /// events (button 4/5) when the remote app has mouse reporting
++        /// enabled. Falls back to arrow up/down on alternate screen without
++        /// mouse mode. Without this, scrolling in TUIs like OpenCode or
++        /// Bubble Tea apps does nothing on iPad.
++        case scrollWheelReporting = "wiki.qaq.shadowterm.cust.scrollWheelReporting"
 +    }
 +
 +    /// `true` when ShadowTerm's customizations are allowed at all. When
@@ -149,11 +168,69 @@ index 0000000..b03c237
 +        return UserDefaults.standard.object(forKey: feature.rawValue) as? Bool ?? true
 +    }
 +}
+diff --git a/Sources/SwiftTerm/ShadowTermSyncDebug.swift b/Sources/SwiftTerm/ShadowTermSyncDebug.swift
+new file mode 100644
+index 0000000..bd9cc71
+--- /dev/null
++++ b/Sources/SwiftTerm/ShadowTermSyncDebug.swift
+@@ -0,0 +1,19 @@
++//
++//  ShadowTermSyncDebug.swift
++//  SwiftTerm (ShadowTerm fork)
++//
++//  Upstream's DEC 2026 synchronized-output work (merged 2026-06) calls
++//  `SyncDebug.log(...)` throughout AppleTerminalView.swift and Terminal.swift
++//  but, at the upstream `main` commit we synced from, never defines the
++//  `SyncDebug` type ... so upstream itself wouldn't compile standalone. This
++//  no-op shim provides the symbol so the fork builds.
++//
++//  REMOVE THIS when upstream adds its own `SyncDebug` definition (a future
++//  upstream sync will conflict here and surface it). The `@autoclosure` means
++//  the interpolated log strings are never even evaluated, so this is free.
++//
++
++enum SyncDebug {
++    @inline(__always)
++    static func log(_ message: @autoclosure () -> String) {}
++}
 diff --git a/Sources/SwiftTerm/Terminal.swift b/Sources/SwiftTerm/Terminal.swift
-index 22eefc6..2faf52e 100644
+index 5a6b84e..4683901 100644
 --- a/Sources/SwiftTerm/Terminal.swift
 +++ b/Sources/SwiftTerm/Terminal.swift
-@@ -1015,6 +1015,108 @@ open class Terminal {
+@@ -424,9 +424,15 @@ open class Terminal {
+     private var lastCharIndex: Int32 = Int32(CharData.maxRune + 1)
+     var gLevel: UInt8 = 0
+     var cursorBlink: Bool = false
+-    
+-    var allow80To132 = true
+-    
++
++    // ShadowTerm: default OFF (xterm's c132/allowColumnSwitching default).
++    // When true, a remote-emitted DECCOLM (ESC[?3h/l) resizes this terminal to
++    // 132/80 columns and fires sizeChanged, which our SSH layer pushes back to
++    // the PTY as a window-size change ... aborting GNU screen ("Aborted because
++    // of window size change") and fighting the real device width. Apps that
++    // genuinely want column switching still opt in via DECSET 40 (ESC[?40h).
++    var allow80To132 = false
++
+     public var parser: EscapeSequenceParser
+     var kittyGraphicsState = KittyGraphicsState()
+     var kittyPlacementContext: KittyPlacementContext?
+@@ -879,9 +885,10 @@ open class Terminal {
+         
+         cc.send8bit = false
+         conformance = .vt500
+-        
+-        allow80To132 = true
+-        
++
++        // ShadowTerm: reset to the safe default (OFF). See declaration above.
++        allow80To132 = false
++
+         xtermTitleSetUtf = false
+         xtermTitleQueryUtf = false
+         
+@@ -1033,6 +1040,108 @@ open class Terminal {
          }
      }
  
@@ -262,59 +339,8 @@ index 22eefc6..2faf52e 100644
      // Configures the EscapeSequenceParser with fallback handlers and print handling
      func configureParser (_ parser: EscapeSequenceParser)
      {
-@@ -1770,18 +1872,43 @@ open class Terminal {
-     //    ESC ] 52 ; c ; [base64 data] \a
-     // where c is for copy and the only thing supported.
-     func oscClipboard (_ data: ArraySlice<UInt8>) {
--        // we require data to start with c; followed by base64 content
--        guard data.count >= 2,
--              data[data.startIndex] == UInt8(ascii: "c"),
--              data[data.startIndex+1] == UInt8(ascii: ";") else {
-+        if !ShadowTermCustomizations.isEnabled(.clipboardSync) {
-+            // Upstream behavior: only "c;..." is accepted.
-+            guard data.count >= 2,
-+                  data[data.startIndex] == UInt8(ascii: "c"),
-+                  data[data.startIndex+1] == UInt8(ascii: ";") else {
-+                return
-+            }
-+            let base64 = Data(data[(data.startIndex+2)...])
-+            guard let content = Data(base64Encoded: base64) else {
-+                return
-+            }
-+            tdel?.clipboardCopy(source: self, content: content)
-             return
-         }
--        
--        let base64 = Data(data[(data.startIndex+2)...])
-+        // ShadowTerm: accept any selection target for tmux compatibility.
-+        // OSC 52 format: selection;base64data
-+        // selection can be: c (clipboard), p (primary), s (select), empty, etc.
-+        guard let semicolonIndex = data.firstIndex(of: UInt8(ascii: ";")) else {
-+            return
-+        }
-+
-+        let base64Start = data.index(after: semicolonIndex)
-+        guard base64Start < data.endIndex else {
-+            return
-+        }
-+
-+        let base64 = Data(data[base64Start...])
-+
-+        // Handle query request (just "?" after semicolon) ... ignore
-+        if base64.count == 1 && base64[base64.startIndex] == UInt8(ascii: "?") {
-+            return
-+        }
-+
-         guard let content = Data(base64Encoded: base64) else {
-             return
-         }
--        
-+
-         tdel?.clipboardCopy(source: self, content: content)
-     }
-     
 diff --git a/Sources/SwiftTerm/iOS/iOSTerminalView.swift b/Sources/SwiftTerm/iOS/iOSTerminalView.swift
-index 5bcde5e..4bbb051 100644
+index 02e637f..3c159aa 100644
 --- a/Sources/SwiftTerm/iOS/iOSTerminalView.swift
 +++ b/Sources/SwiftTerm/iOS/iOSTerminalView.swift
 @@ -161,6 +161,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
@@ -329,12 +355,31 @@ index 5bcde5e..4bbb051 100644
      var linkHighlightRange: [Terminal.LinkMatch.RowRange]?
      private var lastPointerLocation: CGPoint?
      
-@@ -214,12 +219,14 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -213,14 +218,33 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     }
  #endif
      var cellDimension: CellDimension
++    /// Public accessor for the rendered cell metrics. Lets the host app
++    /// reason about pixel-level layout (e.g. computing the leftover band
++    /// between `bounds.height` and `floor(bounds.height / cellHeight) *
++    /// cellHeight` when laying out around the keyboard accessory).
++    public var renderedCellSize: CGSize { cellDimension }
++
++    /// When `true` and the terminal is in alt-screen mode (no scrollback,
++    /// content height exactly fits the visible rows), shift the rendered
++    /// content down so the LAST row aligns with the visible bottom. The
++    /// cell-rounding leftover band moves to the top (typically hidden
++    /// behind nav bar / safe-area). When `false` (default), content is
++    /// top-anchored as upstream SwiftTerm does.
++    ///
++    /// Used by ShadowTerm's mosh path: mosh's framebuffer protocol always
++    /// runs in alt-screen with `displayBuffer.yDisp = 0`, so the existing
++    /// bottom-anchor in `updateScroller` (which only fires when yDisp > 0)
++    /// can't help. SSH leaves this off to preserve its current behavior.
++    public var altScreenBottomAnchor: Bool = false
      var caretView: CaretView?
 +    var _fontSmoothing: Bool = true
-+    var _lineSpacing: CGFloat = 1.0
+     var _lineSpacing: CGFloat = 1.0
      var terminal: Terminal!
      private var progressBarView: TerminalProgressBarView?
      private var progressReportTimer: Timer?
@@ -345,7 +390,7 @@ index 5bcde5e..4bbb051 100644
      var attrStrBuffer: CircularList<ViewLineInfo>!
      var images:[(image: TerminalImage, col: Int, row: Int)] = []
  
-@@ -319,7 +326,7 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -320,12 +344,13 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      {
          showsHorizontalScrollIndicator = true
          indicatorStyle = .white
@@ -354,42 +399,29 @@ index 5bcde5e..4bbb051 100644
          setupKeyboardButtonColors()
          setupDisplayUpdates ();
          setupOptions ()
-@@ -327,9 +334,34 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         setupProgressBar()
          setupGestures ()
++        setupScrollWheelReporting()
          setupLinkReportingInteractions()
          setupAccessoryView ()
-+        if ShadowTermCustomizations.isEnabled(.foregroundRedraw) {
-+            setupForegroundRedraw ()
-+        }
          didFinishSetup = true
+@@ -504,6 +529,15 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      }
- 
-+    /// Force a full redraw when the app returns from background.
-+    /// iOS can purge the CALayer backing store while the app is suspended,
-+    /// leaving stale/partial content visible (especially in landscape).
-+    func setupForegroundRedraw () {
-+        NotificationCenter.default.addObserver(
-+            forName: UIApplication.didBecomeActiveNotification,
-+            object: nil,
-+            queue: .main
-+        ) { [weak self] _ in
-+            guard let self = self, self.didFinishSetup else { return }
-+
-+            // Discard the layer's cached rendering entirely.
-+            // This forces iOS to call draw(_:) for the full visible area
-+            // on the next display cycle, rather than reusing stale tiles.
-+            self.layer.contents = nil
-+            self.setNeedsDisplay(self.bounds)
-+
-+            // Also recalculate scroller in case contentSize drifted
-+            self.updateScroller()
+     
+     @objc open override func paste (_ sender: Any?) {
++        // Block system-triggered paste during gestures. iOS can
++        // trigger paste() from touch interactions on UITextInput views.
++        for gesture in gestureRecognizers ?? [] {
++            if gesture.state == .began || gesture.state == .changed {
++                print("[Scroll] paste() BLOCKED - gesture active: \(type(of: gesture)) state=\(gesture.state.rawValue)")
++                return
++            }
 +        }
-+    }
-+
- #if canImport(MetalKit)
-     /// Enables or disables GPU-accelerated rendering via Metal.
-     ///
-@@ -681,6 +713,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
++        print("[Scroll] paste() ALLOWED - no gesture active, clipboard=\(UIPasteboard.general.string?.prefix(40) ?? "nil")")
+         disableSelectionPanGesture()
+         if let start = UIPasteboard.general.string {
+             if terminal.bracketedPasteMode {
+@@ -690,6 +724,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      
      func sharedMouseEvent (gestureRecognizer: UIGestureRecognizer, release: Bool)
      {
@@ -401,7 +433,64 @@ index 5bcde5e..4bbb051 100644
          let hit = calculateTapHit(gesture: gestureRecognizer)
          if let grid = hit.grid.toScreenCoordinate(from: terminal.displayBuffer) {
              terminal.sendEvent(buttonFlags: encodeFlags (release: release), x: grid.col, y: grid.row, pixelX: hit.pixels.col, pixelY: hit.pixels.row)
-@@ -1173,7 +1210,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -1001,11 +1040,20 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     }
+     
+     var panMouseGesture: UIPanGestureRecognizer?
++    /// Swipe gestures that panMouseGesture should require to fail.
++    /// Set by the app layer so swipes take priority over mouse drag.
++    public var swipeGesturesToRespect: [UIGestureRecognizer] = []
++
+     func enableMousePanGesture () {
+         guard panMouseGesture == nil else {
+             return
+         }
+         let gesture = UIPanGestureRecognizer (target: self, action: #selector(panMouseHandler))
++        // Make pan require swipe gestures to fail first so swipes
++        // (arrow keys / scroll) take priority over mouse drag.
++        for swipe in swipeGesturesToRespect {
++            gesture.require(toFail: swipe)
++        }
+         addGestureRecognizer(gesture)
+         panMouseGesture = gesture
+     }
+@@ -1057,6 +1105,35 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         doubleTap.require(toFail: tripleTap)
+     }
+ 
++    // MARK: - ShadowTerm: Scroll-to-mouse-wheel conversion
++    //
++    // iOS UIScrollView consumes scroll gestures (trackpad + finger) as
++    // contentOffset changes.  TUIs like OpenCode / Bubble Tea expect
++    // mouse wheel events (button 4 = up, 5 = down) via SGR mouse
++    // reporting, or arrow-key fallback on alternate screen.  Without
++    // this, scrolling inside a TUI on iPad does nothing.
++    //
++    // We intercept the scroll view's own contentOffset changes and,
++    // when the remote has mouse reporting active, convert the delta
++    // into wheel events instead of letting the view scroll.
++
++    // isProgrammaticScroll kept for potential future use.
++    public var isProgrammaticScroll = false
++
++    func setupScrollWheelReporting() {
++        // Scroll-wheel via gestures is handled by the scroll buttons
++        // (TerminalView.swift overlay). Adding pan/swipe gesture
++        // handlers for scroll caused too many conflicts with
++        // UIScrollView's own pan, tap handling, keyboard transitions,
++        // and the swipe-hold-repeat feature. The buttons are the
++        // reliable path for tmux scroll.
++    }
++
++    // Scroll-wheel gesture handling removed. The dedicated pan gesture
++    // caused too many conflicts with UIScrollView, tap handling,
++    // keyboard transitions, and swipe-hold-repeat. Scroll in tmux
++    // is reliably handled by the scroll overlay buttons.
++
+     func setupLinkReportingInteractions ()
+     {
+         if #available(iOS 13.4, visionOS 1.0, *) {
+@@ -1190,7 +1267,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
  
      func setupAccessoryView ()
      {
@@ -415,26 +504,83 @@ index 5bcde5e..4bbb051 100644
          let ta = TerminalAccessory(frame: CGRect(x: 0, y: 0, width: frame.width, height: short ? 36 : 48),
                                     inputViewStyle: .keyboard, container: self)
          #if !os(visionOS)
-@@ -1379,8 +1421,16 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -1430,8 +1512,73 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
          let displayBuffer = terminal.displayBuffer
          contentSize = CGSize (width: CGFloat (displayBuffer.cols) * cellDimension.width,
                                height: CGFloat (displayBuffer.lines.count) * cellDimension.height)
 -        //contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
 -        contentOffset = CGPoint (x: 0, y: CGFloat (displayBuffer.lines.count-displayBuffer.rows)*cellDimension.height)
 +
++        // ShadowTerm: alt-screen bottom-anchor. When `altScreenBottomAnchor`
++        // is set AND we're in alt-screen (no scrollback, content height
++        // exactly fits the visible rows), push the rendered content down
++        // via a top inset so the leftover band moves to the top instead of
++        // the bottom. This is the mosh-only path: mosh's framebuffer
++        // protocol always uses alt-screen with yDisp=0, so the regular
++        // bottom-anchor logic below clamps to 0 and leaves a visible gap
++        // between the last row and the keyboard. SSH leaves
++        // altScreenBottomAnchor at its default false and runs through the
++        // unchanged path below.
++        if altScreenBottomAnchor && terminal.isCurrentBufferAlternate {
++            let cellH = cellDimension.height
++            if cellH > 0 {
++                let frameH = max(0, bounds.height - contentInset.bottom)
++                let visibleRows = floor(frameH / cellH)
++                let leftover = max(0, frameH - visibleRows * cellH)
++                if contentInset.top != leftover {
++                    contentInset.top = leftover
++                }
++                // contentInset.top extends the valid contentOffset range
++                // down to -leftover; setting it to -leftover puts the
++                // content's y=0 at viewport y=leftover, leaving an empty
++                // band at the top and the last row flush at the bottom.
++                contentOffset = CGPoint(x: 0, y: -leftover)
++            }
++            return
++        }
++
++        // Reset any leftover top inset from a prior alt-screen anchor pass
++        // so SSH and non-anchored paths see a fresh inset state.
++        if contentInset.top != 0 && !altScreenBottomAnchor {
++            contentInset.top = 0
++        }
++
 +        if ShadowTermCustomizations.isEnabled(.scrollToYDisp) {
-+            // Sync contentOffset to match the terminal's current yDisp.
-+            // Respects manual scrolling (scroll buttons, user swipes) instead of
-+            // always snapping to the cursor position.
-+            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.yDisp) * cellDimension.height)
++            // Bottom-anchor: align the last visible row's bottom edge with
++            // the visible-area bottom (just above contentInset.bottom).
++            // The naive `yDisp * cellHeight` offset top-anchors the rows,
++            // which leaves a leftover band of empty pixels at the BOTTOM
++            // when bounds.height isn't an exact multiple of cellHeight
++            // (e.g. cellH=19, bounds=319, leftover=15px). On every
++            // shell scroll (Enter, command output) updateScroller fires
++            // and that bottom gap reappears flush against the keyboard.
++            // By computing the offset as "last full row bottom" minus
++            // the visible area, the leftover moves to the TOP where it's
++            // much less visually disruptive (often hidden behind nav /
++            // safe-area). Cursor stays flush at the bottom edge.
++            let cellH = cellDimension.height
++            let visibleHeight = max(0, bounds.height - contentInset.top - contentInset.bottom)
++            let lastRowBottom = (CGFloat(displayBuffer.yDisp) + floor(visibleHeight / max(1, cellH))) * cellH
++            let bottomAnchored = lastRowBottom - visibleHeight - contentInset.top
++            // Clamp to >= 0 so we never produce a negative offset (which
++            // UIScrollView would treat as overscroll). When yDisp is so
++            // small the math goes negative, fall back to top-anchor.
++            contentOffset = CGPoint(x: 0, y: max(0, bottomAnchored))
 +        } else {
-+            // Upstream behavior: snap to bottom (cursor position).
 +            contentOffset = CGPoint(x: 0, y: CGFloat(displayBuffer.lines.count - displayBuffer.rows) * cellDimension.height)
++        }
++
++        // Diagnostic: log state when keyboard is visible
++        if contentInset.bottom > 0 {
++            let cursorRow = displayBuffer.y
++            let cursorY = CGFloat(cursorRow + displayBuffer.yDisp) * cellDimension.height
++            let visibleBottom = contentOffset.y + bounds.height - contentInset.bottom
++            print("[Scroll] updateScroller: lines=\(displayBuffer.lines.count) rows=\(displayBuffer.rows) yDisp=\(displayBuffer.yDisp) cursor=row\(cursorRow) cursorY=\(cursorY) contentOffset=\(contentOffset.y) visibleBottom=\(visibleBottom) insetBottom=\(contentInset.bottom) bounds=\(bounds.height) contentSize=\(contentSize.height) altBuf=\(terminal.isCurrentBufferAlternate)")
 +        }
          //Xscroller.doubleValue = scrollPosition
          //Xscroller.knobProportion = scrollThumbsize
      }
-@@ -1543,7 +1593,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -1594,7 +1741,12 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      public var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
      
      open override var canBecomeFirstResponder: Bool {
@@ -448,15 +594,25 @@ index 5bcde5e..4bbb051 100644
      }
      
      open override var canBecomeFocused: Bool {
-@@ -2119,12 +2174,37 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+@@ -1723,6 +1875,9 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     */
+     open func insertText(_ text: String) {
+         uitiLog("insertText(\(text.debugDescription)) \(textInputStateDescription())")
++        if text.count > 2 {
++            print("[Scroll] insertText called with \(text.count) chars: \(text.prefix(40).debugDescription)")
++        }
+         commitTextInput(text, applyModifiers: true)
+     }
+     private func kittyEncoder() -> KittyKeyboardEncoder {
+@@ -2173,11 +2328,47 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
          return Character(newScalar)
      }
  
 -    func ensureCaretIsVisible ()
 +    @objc public func ensureCaretIsVisible ()
      {
-         // Suppress during sync blocks and inter-block gaps.
-         guard !terminal.synchronizedOutputActive && !inSyncSequence else { return }
++        // Suppress while a synchronized-output (DEC 2026) block is active.
+         guard !terminal.synchronizedOutputActive else { return }
 +
 +        let smartCursor = ShadowTermCustomizations.isEnabled(.smartCursor)
 +        if !smartCursor {
@@ -476,14 +632,16 @@ index 5bcde5e..4bbb051 100644
 +        let currentOffset = contentOffset.y
 +        let visibleBottom = currentOffset + visibleHeight
 +        let cursorBottom = cursorY + cellDimension.height
-+        // No breathing-room padding below the cursor. The previous
-+        // value (one full cellHeight) caused the cursor's "scroll
-+        // when near bottom" threshold to trigger as soon as the
-+        // cursor landed on the last visible row, which left an
-+        // empty row of space between the cursor and the visible
-+        // bottom (or the keyboard's top edge). With padding = 0
-+        // the cursor sits flush; scrolling only happens when it
-+        // actually moves below the visible area.
++        // No breathing-room padding below the cursor. The previous value
++        // (cellDimension.height = one full row) made the cursor's "scroll
++        // when near bottom" threshold trigger as soon as the cursor
++        // landed on the last visible row, scrolling everything up by one
++        // row and leaving an empty row of space between the new cursor
++        // position and the visible bottom. ShadowTerm users felt that as
++        // "the prompt moves up a little when I type the first letter."
++        // With padding = 0, the cursor sits flush with the visible bottom
++        // and only triggers a scroll when it actually moves *below* the
++        // visible area.
 +        let desiredPadding: CGFloat = 0
 +
 +        if cursorBottom + desiredPadding > visibleBottom {
@@ -495,8 +653,8 @@ index 5bcde5e..4bbb051 100644
 +        }
      }
      
-     public func deleteBackward() {
-@@ -2196,6 +2276,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+     open func deleteBackward() {
+@@ -2255,6 +2446,11 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
      }
   
      open override func becomeFirstResponder() -> Bool {
@@ -508,3 +666,21 @@ index 5bcde5e..4bbb051 100644
          let response = super.becomeFirstResponder()
          if response {
              caretView?.updateCursorStyle()
+@@ -2695,12 +2891,17 @@ open class TerminalView: UIScrollView, UITextInputTraits, UIKeyInput, UIScrollVi
+         return (width, height)
+     }
+     
++    /// Called by the terminal when mouse mode changes. Public so the
++    /// app layer can observe and adjust gesture priorities.
++    public var onMouseModeChanged: ((Terminal.MouseMode) -> Void)?
++
+     open func mouseModeChanged(source: Terminal) {
+         if source.mouseMode != .off {
+             enableMousePanGesture()
+         } else {
+             disableMousePanGesture()
+         }
++        onMouseModeChanged?(source.mouseMode)
+     }
+     
+     open func setTerminalTitle(source: Terminal, title: String) {

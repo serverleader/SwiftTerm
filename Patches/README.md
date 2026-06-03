@@ -25,14 +25,27 @@ feature off.
 | Scroll tracks `yDisp` | `wiki.qaq.shadowterm.cust.scrollToYDisp` | `true` | `iOSTerminalView.updateScroller` |
 | Smart cursor visibility | `wiki.qaq.shadowterm.smartCursorVisibility` | `true` | `iOSTerminalView.ensureCaretIsVisible` |
 | Initial-resize bypass | `wiki.qaq.shadowterm.cust.initialResizeBypass` | `true` | `AppleTerminalView.processSizeChange` |
-| Foreground redraw | `wiki.qaq.shadowterm.cust.foregroundRedraw` | `true` | `iOSTerminalView.setupForegroundRedraw` |
 | Wide accessory bar (>=768pt) | `wiki.qaq.shadowterm.cust.wideAccessoryBar` | `true` | `iOSTerminalView.setupAccessoryView` |
+| Scroll-wheel reporting (gesture -> button 4/5) | `wiki.qaq.shadowterm.cust.scrollWheelReporting` | `true` | `iOSTerminalView` scroll gestures |
 
 The user-facing "Hide on-screen keyboard" feature
 (`wiki.qaq.shadowterm.hideOnScreenKeyboard`) lives at three additional
 sites in `iOSTerminalView` (`sharedMouseEvent`, `canBecomeFirstResponder`,
 `becomeFirstResponder`). It is gated by the master flag only ... it is a
 real product feature, not a fork-vs-upstream A/B target.
+
+## Hard behavior changes (not flag-gated)
+
+These change a default outright because the upstream behavior is wrong for a
+windowed/SSH terminal; there is no per-feature toggle.
+
+- **DECCOLM disabled** ... `Terminal.allow80To132` defaults to `false` (and
+  resets to `false` in `resetToInitialState`), matching xterm's
+  `c132`/`allowColumnSwitching` default. With it on, a remote-emitted DECCOLM
+  (`ESC[?3h/l`) resized the local terminal to 132/80 columns + full reset,
+  which fired a PTY window-change that aborted GNU `screen` copy mode and
+  garbled the screen on connect. Apps that genuinely want column switching
+  still opt in via `DECSET 40` (`ESC[?40h`).
 
 ## Additive (always-on) API
 
@@ -41,7 +54,12 @@ equivalent to compare against:
 
 - `TerminalView.applyEffectiveSize(_:)` ... public re-entry to
   `processSizeChange` for the keyboard-resize path.
-- `TerminalView.resizeLocked` ... opt-in lock used by the host app.
+- `TerminalView.resizeLocked` ... opt-in lock used by the host app (iOS + Mac).
+- `TerminalView.renderedCellSize` ... public accessor exposing the internal
+  `cellDimension` (the host's `[LAYOUT]` diagnostics read it).
+- `TerminalView.altScreenBottomAnchor` ... bottom-anchors alternate-screen
+  content via `contentInset.top`; used by the mosh framebuffer path
+  (alt-screen with `yDisp == 0`, which `updateScroller` can't otherwise help).
 - `SelectionService` and `selection` made `public` for app inspection.
 - `ensureCaretIsVisible` made `@objc public` so the host can trigger it.
 - `Terminal.TmuxPassthroughDcsHandler` class definition ... only registered
@@ -49,6 +67,15 @@ equivalent to compare against:
 - iOS `_fontSmoothing` / `_lineSpacing` storage ... fixes upstream PR #531
   which referenced these from the cross-platform `AppleTerminalView`
   extension without declaring storage on iOS.
+
+## Temporary shims
+
+- `ShadowTermSyncDebug.swift` ... a no-op `SyncDebug` enum. Upstream's
+  DEC 2026 synchronized-output work calls `SyncDebug.log(...)` throughout
+  `AppleTerminalView`/`Terminal` but, at the `upstream/main` commit synced in
+  2026-06, never defines the type (upstream WIP). **Remove this once upstream
+  ships its own `SyncDebug`** ... a future upstream sync will conflict here
+  and surface it.
 
 ## Regenerating the patch
 
